@@ -1,0 +1,8 @@
+__pycache__/
+cdk.out/
+.venv/
+.claude/
+.bedrock_agentcore.yaml
+gateway_config.json
+*.pdf
+.DS_Store
