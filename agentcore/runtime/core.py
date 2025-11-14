@@ -19,6 +19,7 @@ orchestrator_agent = None
 catalog_agent = None
 order_agent = None
 wm_agent = None
+image_processor_agent = None
 bedrock_model = None
 mcp_tools = None
 
@@ -129,14 +130,19 @@ def create_bedrock_model() -> BedrockModel:
 
 
 def initialize_agents():
-    """Initialize the four specialized agents"""
-    global catalog_agent, order_agent, wm_agent, bedrock_model
+    """Initialize the specialized agents"""
+    global catalog_agent, order_agent, wm_agent, image_processor_agent, bedrock_model
 
     if bedrock_model is None:
         bedrock_model = create_bedrock_model()
 
     # Load DynamoDB MCP tools from gateway
     dynamodb_tools = load_mcp_tools()
+
+    # Import S3 tools
+    import sys
+    sys.path.insert(0, str(BASE_DIR.parent / "tools")) # TODO: Refactor tools into a package
+    from tools.s3_tools import get_s3_image
 
     # Catalog Agent - searches product catalog with DynamoDB access
     catalog_agent = Agent(
@@ -156,6 +162,13 @@ def initialize_agents():
     wm_agent = Agent(
         system_prompt=(BASE_DIR / "prompts/wm.md").read_text(),
         tools=dynamodb_tools,
+        model=bedrock_model,
+    )
+
+    # Image Processor Agent - extracts grocery lists from images
+    image_processor_agent = Agent(
+        system_prompt=(BASE_DIR / "prompts/image_processor.md").read_text(),
+        tools=[get_s3_image],
         model=bedrock_model,
     )
 
@@ -187,6 +200,16 @@ def wm_specialist(delivery_request: str) -> str:
     return str(response)
 
 
+@tool
+def image_processor_specialist(s3_bucket: str, s3_key: str) -> str:
+    """Extract grocery list from image in S3"""
+    if image_processor_agent is None:
+        initialize_agents()
+    prompt = f"Extract the grocery list from the image at s3://{s3_bucket}/{s3_key}"
+    response = image_processor_agent(prompt)
+    return str(response)
+
+
 def get_orchestrator_agent() -> Agent:
     """Get or create the orchestrator agent"""
     global orchestrator_agent, bedrock_model
@@ -199,7 +222,7 @@ def get_orchestrator_agent() -> Agent:
 
         orchestrator_agent = Agent(
             system_prompt=(BASE_DIR / "prompts/orchestrator.md").read_text(),
-            tools=[catalog_specialist, order_specialist, wm_specialist],
+            tools=[catalog_specialist, order_specialist, wm_specialist, image_processor_specialist],
             model=bedrock_model,
         )
 
@@ -231,6 +254,7 @@ def health_check() -> Dict[str, Any]:
         "catalog_ready": catalog_agent is not None,
         "order_ready": order_agent is not None,
         "wm_ready": wm_agent is not None,
+        "image_processor_ready": image_processor_agent is not None,
         "bedrock_model_ready": bedrock_model is not None,
         "aws_region": os.environ.get("AWS_REGION", "ap-southeast-2"),
     }

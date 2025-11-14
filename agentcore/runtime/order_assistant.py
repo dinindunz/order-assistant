@@ -20,11 +20,16 @@ def invoke(payload):
         grocery_items = payload
     # Handle dict payload
     elif isinstance(payload, dict):
-        grocery_items = payload.get("grocery_items", [])
-        if not grocery_items:
-            text_input = payload.get("prompt", payload.get("inputText", ""))
-            if text_input:
-                grocery_items = text_input.split("\n")
+        # Check if payload contains S3 information
+        if "s3_bucket" in payload and "s3_key" in payload:
+            logger.info(f"Processing S3 image: s3://{payload['s3_bucket']}/{payload['s3_key']}")
+            grocery_items = [f"Extract grocery list from s3://{payload['s3_bucket']}/{payload['s3_key']}"]
+        else:
+            grocery_items = payload.get("grocery_items", [])
+            if not grocery_items:
+                text_input = payload.get("prompt", payload.get("inputText", ""))
+                if text_input:
+                    grocery_items = text_input.split("\n")
     # Handle string payload
     elif isinstance(payload, str):
         try:
