@@ -5,16 +5,46 @@ from aws_cdk import (
     aws_s3_notifications as s3n,
     aws_iam as iam,
     aws_dynamodb as dynamodb,
+    aws_ssm as ssm,
     Duration,
     CfnOutput,
 )
 from constructs import Construct
+import yaml
+import pathlib
 
 
 class OrderAssistantStack(Stack):
 
     def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
+
+        # Read agent ARN from bedrock_agentcore.yaml
+        agentcore_config_path = pathlib.Path(__file__).parent.parent / "agentcore" / "runtime" / ".bedrock_agentcore.yaml"
+        with open(agentcore_config_path, "r") as f:
+            agentcore_config = yaml.safe_load(f)
+
+        agent_arn = agentcore_config["agents"]["order_assistant"]["bedrock_agentcore"]["agent_arn"]
+
+        # Create IAM role for AgentCore Runtime
+        agentcore_execution_role = iam.Role(
+            self,
+            "AgentCoreExecutionRole",
+            assumed_by=iam.ServicePrincipal("bedrock-agentcore.amazonaws.com"),
+            description="Execution role for AgentCore order assistant runtime",
+            managed_policies=[
+                iam.ManagedPolicy.from_aws_managed_policy_name("AdministratorAccess")
+            ],
+        )
+
+        # Create SSM parameter for agent ARN
+        agent_arn_param = ssm.StringParameter(
+            self,
+            "AgentRuntimeArn",
+            parameter_name="/order-assistant/agent-runtime-arn",
+            string_value=agent_arn,
+            description="AgentCore Runtime ARN for order assistant",
+        )
 
         bucket = s3.Bucket(self, "OrderAssistantBucket")
 
@@ -33,18 +63,19 @@ class OrderAssistantStack(Stack):
             runtime=_lambda.Runtime.PYTHON_3_12,
             handler="lambda.handler",
             code=_lambda.Code.from_asset("src/process_order"),
+            environment={
+                "AGENT_ARN_PARAM": agent_arn_param.parameter_name
+            },
         )
 
         process_order_lambda.role.add_managed_policy(
             iam.ManagedPolicy.from_aws_managed_policy_name("AdministratorAccess")
         )
 
+        # Grant Lambda permission to read SSM parameter
+        agent_arn_param.grant_read(process_order_lambda)
+
         bucket.grant_read(process_order_lambda)
-        process_order_lambda.add_to_role_policy(
-            iam.PolicyStatement(
-                actions=["textract:DetectDocumentText"], resources=["*"]
-            )
-        )
 
         bucket.add_event_notification(
             s3.EventType.OBJECT_CREATED,
@@ -100,4 +131,10 @@ class OrderAssistantStack(Stack):
             "OrderAssistantBucketName",
             value=bucket.bucket_name,
             description="S3 Bucket for Order Documents",
+        )
+        CfnOutput(
+            self,
+            "AgentCoreExecutionRoleArn",
+            value=agentcore_execution_role.role_arn,
+            description="AgentCore Runtime Execution Role ARN",
         )
