@@ -3,6 +3,7 @@ import logging
 from strands import Agent, tool
 from strands.models import BedrockModel
 from strands.tools.mcp.mcp_client import MCPClient
+from strands_tools import image_reader
 from mcp.client.streamable_http import streamablehttp_client
 from bedrock_agentcore_starter_toolkit.operations.gateway.client import GatewayClient
 from typing import Dict, Any
@@ -139,10 +140,10 @@ def initialize_agents():
     # Load DynamoDB MCP tools from gateway
     dynamodb_tools = load_mcp_tools()
 
-    # Import S3 tools
+    # Import S3 tools from runtime/tools directory
     import sys
-    sys.path.insert(0, str(BASE_DIR.parent / "tools")) # TODO: Refactor tools into a package
-    from tools.s3_tools import get_s3_image
+    sys.path.insert(0, str(BASE_DIR / "tools"))
+    from s3_tools import download_image_from_s3
 
     # Catalog Agent - searches product catalog with DynamoDB access
     catalog_agent = Agent(
@@ -165,10 +166,10 @@ def initialize_agents():
         model=bedrock_model,
     )
 
-    # Image Processor Agent - extracts grocery lists from images
+    # Image Processor Agent - extracts grocery lists from images using S3 + image_reader
     image_processor_agent = Agent(
         system_prompt=(BASE_DIR / "prompts/image_processor.md").read_text(),
-        tools=[get_s3_image],
+        tools=[download_image_from_s3, image_reader],
         model=bedrock_model,
     )
 

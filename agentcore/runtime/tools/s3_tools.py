@@ -1,27 +1,26 @@
+import os
 import boto3
-import base64
 from strands import tool
 
 s3_client = boto3.client('s3')
 
-@tool
-def get_s3_image(bucket: str, key: str) -> dict:
+
+@tool(name="download_image_from_s3", description="Download files from Amazon S3 bucket")
+def download_image_from_s3(bucket: str, key: str) -> str:
     """
-    Retrieve an image from S3 and return it as base64 encoded data.
+    Download an image from S3 to a temporary location.
 
     Args:
         bucket: S3 bucket name
-        key: S3 object key
+        key: S3 object key (e.g., 'grocery_list.pdf')
 
     Returns:
-        Dictionary with base64 encoded image data and metadata
+        Local file path where the image was downloaded
     """
-    response = s3_client.get_object(Bucket=bucket, Key=key)
-    image_data = response['Body'].read()
+    # Use /tmp directory which is writable in Lambda/container environments
+    filename = os.path.basename(key)
+    download_path = os.path.join('/tmp', filename)
 
-    return {
-        "image_base64": base64.b64encode(image_data).decode('utf-8'),
-        "content_type": response['ContentType'],
-        "size": response['ContentLength'],
-        "key": key
-    }
+    s3_client.download_file(bucket, key, download_path)
+
+    return download_path
