@@ -2,6 +2,7 @@ import boto3
 import json
 import logging
 import os
+import time
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -339,7 +340,22 @@ def handle_image_message(customer_message):
         response_data = json.loads(response_body)
         logger.info("Agent processing completed")
 
-        # Send agent response with interactive buttons for next action
+        # Send agent response to user (separate message for long responses)
+        send_whatsapp_message(
+            {
+                "messaging_product": "whatsapp",
+                "to": f"+{customer_message['from']}",
+                "text": {
+                    "preview_url": False,
+                    "body": f"{response_data}",
+                },
+            }
+        )
+
+        # Wait briefly to ensure message ordering
+        time.sleep(3)
+
+        # Send interactive buttons for next action (max 1024 chars for body)
         send_whatsapp_message(
             {
                 "messaging_product": "whatsapp",
@@ -347,7 +363,7 @@ def handle_image_message(customer_message):
                 "type": "interactive",
                 "interactive": {
                     "type": "button",
-                    "body": {"text": f"{response_data}\n\nWhat would you like to do next?"},
+                    "body": {"text": "What would you like to do next?"},
                     "action": {
                         "buttons": [
                             {
