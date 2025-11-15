@@ -1,6 +1,5 @@
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
 import logging
-import json
 from core import process_grocery_list
 
 logger = logging.getLogger(__name__)
@@ -13,42 +12,22 @@ def invoke(payload):
     """Handler for Bedrock agent invocation"""
     logger.info(f"Received payload type: {type(payload)}, value: {payload}")
 
-    grocery_items = []
+    # Expect standardized payload format: {"action": "...", "instruction": "...", "customer_id": "..."}
+    if not isinstance(payload, dict) or "instruction" not in payload:
+        logger.error(
+            f"Invalid payload format. Expected dict with 'instruction' field: {payload}"
+        )
+        return "Error: Invalid payload format"
 
-    # Handle list payload directly
-    if isinstance(payload, list):
-        grocery_items = payload
-    # Handle dict payload
-    elif isinstance(payload, dict):
-        # Check if payload contains S3 information
-        if "s3_bucket" in payload and "s3_key" in payload:
-            logger.info(
-                f"Processing S3 image: s3://{payload['s3_bucket']}/{payload['s3_key']}"
-            )
-            # Create a prompt that instructs the orchestrator to extract grocery list from S3
-            grocery_items = [
-                f"Extract grocery list from S3 bucket '{payload['s3_bucket']}' key '{payload['s3_key']}'"
-            ]
-        else:
-            grocery_items = payload.get("grocery_items", [])
-            if not grocery_items:
-                text_input = payload.get("prompt", payload.get("inputText", ""))
-                if text_input:
-                    grocery_items = text_input.split("\n")
-    # Handle string payload
-    elif isinstance(payload, str):
-        try:
-            parsed = json.loads(payload)
-            if isinstance(parsed, list):
-                grocery_items = parsed
-            else:
-                grocery_items = parsed.get("grocery_items", [parsed])
-        except:
-            grocery_items = [payload]
+    action = payload.get("action", "UNKNOWN")
+    instruction = payload["instruction"]
+    customer_id = payload.get("customer_id", "unknown")
 
-    logger.info(f"Processing grocery items: {grocery_items}")
+    logger.info(f"Processing action '{action}' for customer {customer_id}")
+    logger.info(f"Instruction: {instruction}")
 
-    result = process_grocery_list(grocery_items)
+    # Process the instruction through the orchestrator
+    result = process_grocery_list([instruction])
 
     logger.info(f"Processing completed")
 

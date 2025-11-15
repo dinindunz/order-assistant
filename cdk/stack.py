@@ -76,7 +76,7 @@ class OrderAssistantStack(Stack):
                 "MEDIA_BUCKET_NAME": bucket.bucket_name,
                 "AGENT_ARN_PARAM": agent_arn_param.parameter_name,
             },
-            timeout=Duration.minutes(5),
+            timeout=Duration.minutes(15),
         )
 
         process_order_lambda.role.add_managed_policy(
