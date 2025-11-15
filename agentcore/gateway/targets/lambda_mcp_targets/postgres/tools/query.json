@@ -1,0 +1,14 @@
+{
+  "name": "query",
+  "description": "Execute a SELECT query on the PostgreSQL database. Use this to retrieve data from tables. Returns the query results as a list of rows.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "description": "The SQL SELECT query to execute (e.g., 'SELECT * FROM products WHERE price > 10')"
+      }
+    },
+    "required": ["query"]
+  }
+}

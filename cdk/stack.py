@@ -7,6 +7,9 @@ from aws_cdk import (
     aws_iam as iam,
     aws_dynamodb as dynamodb,
     aws_ssm as ssm,
+    aws_ec2 as ec2,
+    aws_rds as rds,
+    RemovalPolicy,
     Duration,
     CfnOutput,
 )
@@ -55,6 +58,63 @@ class OrderAssistantStack(Stack):
         )
 
         bucket = s3.Bucket(self, "OrderAssistantBucket")
+
+        # Create VPC for RDS
+        vpc = ec2.Vpc(
+            self,
+            "OrderAssistantVpc",
+            max_azs=2,
+            nat_gateways=0,  # No NAT gateway for cost savings
+            subnet_configuration=[
+                ec2.SubnetConfiguration(
+                    name="Public",
+                    subnet_type=ec2.SubnetType.PUBLIC,
+                    cidr_mask=24,
+                ),
+                ec2.SubnetConfiguration(
+                    name="Isolated",
+                    subnet_type=ec2.SubnetType.PRIVATE_ISOLATED,
+                    cidr_mask=24,
+                ),
+            ],
+        )
+
+        # Security group for RDS
+        rds_security_group = ec2.SecurityGroup(
+            self,
+            "RDSSecurityGroup",
+            vpc=vpc,
+            description="Security group for RDS PostgreSQL instance",
+            allow_all_outbound=True,
+        )
+
+        # Allow Lambda to connect to RDS
+        rds_security_group.add_ingress_rule(
+            peer=ec2.Peer.ipv4(vpc.vpc_cidr_block),
+            connection=ec2.Port.tcp(5432),
+            description="Allow PostgreSQL access from VPC",
+        )
+
+        # Aurora PostgreSQL Serverless v2 Cluster
+        db_cluster = rds.DatabaseCluster(
+            self,
+            "OrderAssistantDB",
+            engine=rds.DatabaseClusterEngine.aurora_postgres(
+                version=rds.AuroraPostgresEngineVersion.VER_16_6
+            ),
+            vpc=vpc,
+            vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PRIVATE_ISOLATED),
+            security_groups=[rds_security_group],
+            default_database_name="orderassistant",
+            credentials=rds.Credentials.from_generated_secret("postgres"),
+            storage_encrypted=True,
+            backup=rds.BackupProps(retention=Duration.days(7)),
+            deletion_protection=False,
+            removal_policy=RemovalPolicy.SNAPSHOT,
+            serverless_v2_min_capacity=0.5,
+            serverless_v2_max_capacity=1,
+            writer=rds.ClusterInstance.serverless_v2("Writer"),
+        )
 
         catalog_table = dynamodb.Table(
             self,
@@ -121,6 +181,33 @@ class OrderAssistantStack(Stack):
             iam.ManagedPolicy.from_aws_managed_policy_name("AdministratorAccess")
         )
 
+        # PostgreSQL MCP Server Lambda
+        postgres_mcp_lambda = _lambda.DockerImageFunction(
+            self,
+            "PostgreSQLMCPServer",
+            code=_lambda.DockerImageCode.from_image_asset(
+                directory="src/lambda/postgres_mcp", file="Dockerfile"
+            ),
+            timeout=Duration.minutes(5),
+            memory_size=512,
+            vpc=vpc,
+            vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PRIVATE_ISOLATED),
+            security_groups=[rds_security_group],
+            environment={
+                "POSTGRES_HOST": db_cluster.cluster_endpoint.hostname,
+                "POSTGRES_PORT": "5432",
+                "POSTGRES_DB": "orderassistant",
+                "POSTGRES_SECRET_ARN": db_cluster.secret.secret_arn,
+                "FASTMCP_LOG_LEVEL": "ERROR",
+            },
+        )
+
+        # Grant Lambda permission to read database credentials from Secrets Manager
+        db_cluster.secret.grant_read(postgres_mcp_lambda)
+
+        # Allow Lambda to connect to Aurora
+        db_cluster.connections.allow_default_port_from(postgres_mcp_lambda)
+
         # Output the Lambda function ARN and name
         CfnOutput(
             self,
@@ -133,6 +220,18 @@ class OrderAssistantStack(Stack):
             "DynamoDBMCPLambdaName",
             value=dynamodb_mcp_lambda.function_name,
             description="DynamoDB MCP Server Lambda Function Name",
+        )
+        CfnOutput(
+            self,
+            "PostgreSQLMCPLambdaArn",
+            value=postgres_mcp_lambda.function_arn,
+            description="PostgreSQL MCP Server Lambda Function ARN",
+        )
+        CfnOutput(
+            self,
+            "PostgreSQLMCPLambdaName",
+            value=postgres_mcp_lambda.function_name,
+            description="PostgreSQL MCP Server Lambda Function Name",
         )
         CfnOutput(
             self,
@@ -157,4 +256,28 @@ class OrderAssistantStack(Stack):
             "WhatsAppTopicArn",
             value=whatsapp_topic.topic_arn,
             description="SNS Topic ARN for WhatsApp Messages",
+        )
+        CfnOutput(
+            self,
+            "DatabaseEndpoint",
+            value=db_cluster.cluster_endpoint.hostname,
+            description="Aurora PostgreSQL Cluster Endpoint",
+        )
+        CfnOutput(
+            self,
+            "DatabasePort",
+            value=str(db_cluster.cluster_endpoint.port),
+            description="Aurora PostgreSQL Port",
+        )
+        CfnOutput(
+            self,
+            "DatabaseSecretArn",
+            value=db_cluster.secret.secret_arn,
+            description="Aurora PostgreSQL Credentials Secret ARN",
+        )
+        CfnOutput(
+            self,
+            "DatabaseName",
+            value="orderassistant",
+            description="RDS PostgreSQL Database Name",
         )
