@@ -12,4 +12,3 @@
 - cd agentcore/runtime && agentcore launch
 - cd scripts && ./populate_catalog.sh
 - cd scripts && ./test_agent.sh (local test path)
-- cd scripts && ./upload_grocery_list.sh (textract path)
