@@ -339,19 +339,7 @@ def handle_image_message(customer_message):
         response_data = json.loads(response_body)
         logger.info("Agent processing completed")
 
-        # Send agent response to user
-        send_whatsapp_message(
-            {
-                "messaging_product": "whatsapp",
-                "to": f"+{customer_message['from']}",
-                "text": {
-                    "preview_url": False,
-                    "body": f"{response_data}",
-                },
-            }
-        )
-
-        # Send interactive buttons for next action
+        # Send agent response with interactive buttons for next action
         send_whatsapp_message(
             {
                 "messaging_product": "whatsapp",
@@ -359,7 +347,7 @@ def handle_image_message(customer_message):
                 "type": "interactive",
                 "interactive": {
                     "type": "button",
-                    "body": {"text": "What would you like to do next?"},
+                    "body": {"text": f"{response_data}\n\nWhat would you like to do next?"},
                     "action": {
                         "buttons": [
                             {
