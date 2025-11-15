@@ -70,7 +70,7 @@ class OrderAssistantStack(Stack):
             "ProcessOrder",
             runtime=_lambda.Runtime.PYTHON_3_12,
             handler="lambda.handler",
-            code=_lambda.Code.from_asset("src/process_order"),
+            code=_lambda.Code.from_asset("src/lambda/process_order"),
             environment={
                 "PHONE_NUMBER_ID": "phone-number-id-b71b760ca9774fe9bd465120e4c00b4a",  # Your WhatsApp phone number ID
                 "MEDIA_BUCKET_NAME": bucket.bucket_name,
