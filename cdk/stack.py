@@ -2,7 +2,8 @@ from aws_cdk import (
     Stack,
     aws_s3 as s3,
     aws_lambda as _lambda,
-    aws_s3_notifications as s3n,
+    aws_sns as sns,
+    aws_sns_subscriptions as sns_subs,
     aws_iam as iam,
     aws_dynamodb as dynamodb,
     aws_ssm as ssm,
@@ -20,11 +21,18 @@ class OrderAssistantStack(Stack):
         super().__init__(scope, construct_id, **kwargs)
 
         # Read agent ARN from bedrock_agentcore.yaml
-        agentcore_config_path = pathlib.Path(__file__).parent.parent / "agentcore" / "runtime" / ".bedrock_agentcore.yaml"
+        agentcore_config_path = (
+            pathlib.Path(__file__).parent.parent
+            / "agentcore"
+            / "runtime"
+            / ".bedrock_agentcore.yaml"
+        )
         with open(agentcore_config_path, "r") as f:
             agentcore_config = yaml.safe_load(f)
 
-        agent_arn = agentcore_config["agents"]["order_assistant"]["bedrock_agentcore"]["agent_arn"]
+        agent_arn = agentcore_config["agents"]["order_assistant"]["bedrock_agentcore"][
+            "agent_arn"
+        ]
 
         # Create IAM role for AgentCore Runtime
         agentcore_execution_role = iam.Role(
@@ -64,8 +72,11 @@ class OrderAssistantStack(Stack):
             handler="lambda.handler",
             code=_lambda.Code.from_asset("src/process_order"),
             environment={
-                "AGENT_ARN_PARAM": agent_arn_param.parameter_name
+                "PHONE_NUMBER_ID": "phone-number-id-b71b760ca9774fe9bd465120e4c00b4a",  # Your WhatsApp phone number ID
+                "MEDIA_BUCKET_NAME": bucket.bucket_name,
+                "AGENT_ARN_PARAM": agent_arn_param.parameter_name,
             },
+            timeout=Duration.minutes(5),
         )
 
         process_order_lambda.role.add_managed_policy(
@@ -75,17 +86,20 @@ class OrderAssistantStack(Stack):
         # Grant Lambda permission to read SSM parameter
         agent_arn_param.grant_read(process_order_lambda)
 
-        bucket.grant_read(process_order_lambda)
+        # Grant Lambda permission to read/write S3 bucket
+        bucket.grant_read_write(process_order_lambda)
 
-        bucket.add_event_notification(
-            s3.EventType.OBJECT_CREATED,
-            s3n.LambdaDestination(process_order_lambda),
-            s3.NotificationKeyFilter(suffix=".png"),
+        # Create SNS topic for WhatsApp messages
+        whatsapp_topic = sns.Topic(
+            self,
+            "WhatsAppMessageTopic",
+            display_name="WhatsApp Message Topic",
+            topic_name="OrderAssistant-WhatsAppMessages",
         )
-        bucket.add_event_notification(
-            s3.EventType.OBJECT_CREATED,
-            s3n.LambdaDestination(process_order_lambda),
-            s3.NotificationKeyFilter(suffix=".pdf"),
+
+        # Subscribe Lambda to SNS topic
+        whatsapp_topic.add_subscription(
+            sns_subs.LambdaSubscription(process_order_lambda)
         )
 
         # DynamoDB MCP Server Lambda
@@ -137,4 +151,10 @@ class OrderAssistantStack(Stack):
             "AgentCoreExecutionRoleArn",
             value=agentcore_execution_role.role_arn,
             description="AgentCore Runtime Execution Role ARN",
+        )
+        CfnOutput(
+            self,
+            "WhatsAppTopicArn",
+            value=whatsapp_topic.topic_arn,
+            description="SNS Topic ARN for WhatsApp Messages",
         )

@@ -6,3 +6,4 @@ cdk.out/
 gateway_config.json
 *.pdf
 .DS_Store
+.canvas/

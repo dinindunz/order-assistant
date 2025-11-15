@@ -22,9 +22,13 @@ def invoke(payload):
     elif isinstance(payload, dict):
         # Check if payload contains S3 information
         if "s3_bucket" in payload and "s3_key" in payload:
-            logger.info(f"Processing S3 image: s3://{payload['s3_bucket']}/{payload['s3_key']}")
+            logger.info(
+                f"Processing S3 image: s3://{payload['s3_bucket']}/{payload['s3_key']}"
+            )
             # Create a prompt that instructs the orchestrator to extract grocery list from S3
-            grocery_items = [f"Extract grocery list from S3 bucket '{payload['s3_bucket']}' key '{payload['s3_key']}'"]
+            grocery_items = [
+                f"Extract grocery list from S3 bucket '{payload['s3_bucket']}' key '{payload['s3_key']}'"
+            ]
         else:
             grocery_items = payload.get("grocery_items", [])
             if not grocery_items:

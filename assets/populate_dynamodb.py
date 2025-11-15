@@ -7,7 +7,9 @@ region = "ap-southeast-2"
 cfn = boto3.client("cloudformation", region_name=region)
 response = cfn.describe_stacks(StackName="OrderAssistantStack")
 outputs = response["Stacks"][0]["Outputs"]
-table_name = next(o["OutputValue"] for o in outputs if o["OutputKey"] == "ProductCatalogTableName")
+table_name = next(
+    o["OutputValue"] for o in outputs if o["OutputKey"] == "ProductCatalogTableName"
+)
 
 print(f"Using DynamoDB table: {table_name}\n")
 

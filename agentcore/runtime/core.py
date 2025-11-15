@@ -68,13 +68,15 @@ def load_mcp_tools():
         # Get client_info from Secrets Manager
         client_info = config.get("client_info")
         try:
-            secrets_client = boto3.client('secretsmanager', region_name=region)
+            secrets_client = boto3.client("secretsmanager", region_name=region)
             secret_name = f"agentcore/gateway/{gateway_id}/client-info"
             response = secrets_client.get_secret_value(SecretId=secret_name)
-            client_info = json.loads(response['SecretString'])
+            client_info = json.loads(response["SecretString"])
             logger.info(f"Retrieved client_info from Secrets Manager")
         except Exception as e:
-            logger.warning(f"Could not retrieve from Secrets Manager, using config file: {e}")
+            logger.warning(
+                f"Could not retrieve from Secrets Manager, using config file: {e}"
+            )
 
         # Get access token
         logger.info("Getting access token for MCP gateway...")
@@ -142,6 +144,7 @@ def initialize_agents():
 
     # Import S3 tools from runtime/tools directory
     import sys
+
     sys.path.insert(0, str(BASE_DIR / "tools"))
     from s3_tools import download_image_from_s3
 
@@ -223,7 +226,12 @@ def get_orchestrator_agent() -> Agent:
 
         orchestrator_agent = Agent(
             system_prompt=(BASE_DIR / "prompts/orchestrator.md").read_text(),
-            tools=[catalog_specialist, order_specialist, wm_specialist, image_processor_specialist],
+            tools=[
+                catalog_specialist,
+                order_specialist,
+                wm_specialist,
+                image_processor_specialist,
+            ],
             model=bedrock_model,
         )
 
