@@ -48,11 +48,16 @@ def get_full_tools_list(client):
     return tools
 
 
-def load_mcp_tools():
-    """Load DynamoDB MCP tools from AgentCore Gateway"""
+def load_mcp_tools(tool_filter=None):
+    """Load MCP tools from AgentCore Gateway
+
+    Args:
+        tool_filter: Optional list of tool name prefixes to filter (e.g., ['query', 'execute'] for PostgreSQL)
+    """
     global mcp_tools
 
-    if mcp_tools is not None:
+    # Return cached tools if no filter is specified and we have cached tools
+    if mcp_tools is not None and tool_filter is None:
         return mcp_tools
 
     try:
@@ -92,12 +97,28 @@ def load_mcp_tools():
         mcp_client.start()
 
         with mcp_client:
-            tools = get_full_tools_list(mcp_client.list_tools_sync())
-            mcp_tools = tools
-            logger.info(
-                f"✓ Loaded {len(tools)} MCP tools: {[tool.tool_name for tool in tools]}"
-            )
-            return tools
+            all_tools = get_full_tools_list(mcp_client.list_tools_sync())
+
+            # Cache all tools if not already cached
+            if mcp_tools is None:
+                mcp_tools = all_tools
+
+            # Filter tools if requested
+            if tool_filter:
+                filtered_tools = [
+                    tool
+                    for tool in all_tools
+                    if any(tool.tool_name.startswith(prefix) for prefix in tool_filter)
+                ]
+                logger.info(
+                    f"✓ Loaded {len(filtered_tools)} filtered MCP tools: {[tool.tool_name for tool in filtered_tools]}"
+                )
+                return filtered_tools
+            else:
+                logger.info(
+                    f"✓ Loaded {len(all_tools)} MCP tools: {[tool.tool_name for tool in all_tools]}"
+                )
+                return all_tools
 
     except FileNotFoundError:
         logger.warning(
@@ -139,8 +160,15 @@ def initialize_agents():
     if bedrock_model is None:
         bedrock_model = create_bedrock_model()
 
-    # Load DynamoDB MCP tools from gateway
-    dynamodb_tools = load_mcp_tools()
+    # Load PostgreSQL tools for catalog (query, execute, list_tables, describe_table)
+    postgres_tools = load_mcp_tools(
+        tool_filter=["query", "execute", "list_tables", "describe_table"]
+    )
+
+    # Load DynamoDB tools for orders and warehouse management
+    dynamodb_tools = load_mcp_tools(
+        tool_filter=["scan_table", "query_table", "get_item", "batch_get"]
+    )
 
     # Import S3 tools from runtime/tools directory
     import sys
@@ -148,10 +176,10 @@ def initialize_agents():
     sys.path.insert(0, str(BASE_DIR / "tools"))
     from s3_tools import download_image_from_s3
 
-    # Catalog Agent - searches product catalog with DynamoDB access
+    # Catalog Agent - searches product catalog with PostgreSQL access
     catalog_agent = Agent(
         system_prompt=(BASE_DIR / "prompts/catalog.md").read_text(),
-        tools=dynamodb_tools,
+        tools=postgres_tools,
         model=bedrock_model,
     )
 

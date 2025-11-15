@@ -10,5 +10,5 @@
     Use for first time setup
     When asks for IAM role, provide the AgentCore Runtime Execution Role ARN from CloudFormation outputs
 - cd agentcore/runtime && agentcore launch
-- cd scripts && ./populate_catalog.sh
+- cd scripts && ./invoke_populate_db.sh
 - cd scripts && ./test_agent.sh (local test path)

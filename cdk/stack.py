@@ -88,11 +88,34 @@ class OrderAssistantStack(Stack):
             allow_all_outbound=True,
         )
 
-        # Allow Lambda to connect to RDS
+        # Allow all traffic from VPC CIDR
         rds_security_group.add_ingress_rule(
             peer=ec2.Peer.ipv4(vpc.vpc_cidr_block),
-            connection=ec2.Port.tcp(5432),
-            description="Allow PostgreSQL access from VPC",
+            connection=ec2.Port.all_traffic(),
+            description="Allow all traffic from VPC",
+        )
+
+        # Allow all traffic from the same security group
+        rds_security_group.add_ingress_rule(
+            peer=rds_security_group,
+            connection=ec2.Port.all_traffic(),
+            description="Allow all traffic from same security group",
+        )
+
+        # VPC Endpoint for Secrets Manager
+        vpc.add_interface_endpoint(
+            "SecretsManagerEndpoint",
+            service=ec2.InterfaceVpcEndpointAwsService.SECRETS_MANAGER,
+            subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PRIVATE_ISOLATED),
+            security_groups=[rds_security_group],
+        )
+
+        # VPC Endpoint for Bedrock Agent Runtime
+        vpc.add_interface_endpoint(
+            "BedrockAgentRuntimeEndpoint",
+            service=ec2.InterfaceVpcEndpointAwsService.BEDROCK_AGENT_RUNTIME,
+            subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PRIVATE_ISOLATED),
+            security_groups=[rds_security_group],
         )
 
         # Aurora PostgreSQL Serverless v2 Cluster
@@ -103,7 +126,9 @@ class OrderAssistantStack(Stack):
                 version=rds.AuroraPostgresEngineVersion.VER_16_6
             ),
             vpc=vpc,
-            vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PRIVATE_ISOLATED),
+            vpc_subnets=ec2.SubnetSelection(
+                subnet_type=ec2.SubnetType.PRIVATE_ISOLATED
+            ),
             security_groups=[rds_security_group],
             default_database_name="orderassistant",
             credentials=rds.Credentials.from_generated_secret("postgres"),
@@ -191,7 +216,9 @@ class OrderAssistantStack(Stack):
             timeout=Duration.minutes(5),
             memory_size=512,
             vpc=vpc,
-            vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PRIVATE_ISOLATED),
+            vpc_subnets=ec2.SubnetSelection(
+                subnet_type=ec2.SubnetType.PRIVATE_ISOLATED
+            ),
             security_groups=[rds_security_group],
             environment={
                 "POSTGRES_HOST": db_cluster.cluster_endpoint.hostname,
@@ -202,11 +229,47 @@ class OrderAssistantStack(Stack):
             },
         )
 
+        postgres_mcp_lambda.role.add_managed_policy(
+            iam.ManagedPolicy.from_aws_managed_policy_name("AdministratorAccess")
+        )
+
         # Grant Lambda permission to read database credentials from Secrets Manager
         db_cluster.secret.grant_read(postgres_mcp_lambda)
 
         # Allow Lambda to connect to Aurora
         db_cluster.connections.allow_default_port_from(postgres_mcp_lambda)
+
+        # Populate Database Lambda (for initial data loading)
+        populate_db_lambda = _lambda.DockerImageFunction(
+            self,
+            "PopulateDBFunction",
+            code=_lambda.DockerImageCode.from_image_asset(
+                directory="src/lambda/populate_catalog", file="Dockerfile"
+            ),
+            timeout=Duration.minutes(5),
+            memory_size=512,
+            vpc=vpc,
+            vpc_subnets=ec2.SubnetSelection(
+                subnet_type=ec2.SubnetType.PRIVATE_ISOLATED
+            ),
+            security_groups=[rds_security_group],
+            environment={
+                "POSTGRES_HOST": db_cluster.cluster_endpoint.hostname,
+                "POSTGRES_PORT": "5432",
+                "POSTGRES_DB": "orderassistant",
+                "POSTGRES_SECRET_ARN": db_cluster.secret.secret_arn,
+            },
+        )
+
+        populate_db_lambda.role.add_managed_policy(
+            iam.ManagedPolicy.from_aws_managed_policy_name("AdministratorAccess")
+        )
+
+        # Grant Lambda permission to read database credentials from Secrets Manager
+        db_cluster.secret.grant_read(populate_db_lambda)
+
+        # Allow Lambda to connect to Aurora
+        db_cluster.connections.allow_default_port_from(populate_db_lambda)
 
         # Output the Lambda function ARN and name
         CfnOutput(
@@ -232,6 +295,18 @@ class OrderAssistantStack(Stack):
             "PostgreSQLMCPLambdaName",
             value=postgres_mcp_lambda.function_name,
             description="PostgreSQL MCP Server Lambda Function Name",
+        )
+        CfnOutput(
+            self,
+            "PopulateDBLambdaArn",
+            value=populate_db_lambda.function_arn,
+            description="Populate Database Lambda Function ARN",
+        )
+        CfnOutput(
+            self,
+            "PopulateDBLambdaName",
+            value=populate_db_lambda.function_name,
+            description="Populate Database Lambda Function Name",
         )
         CfnOutput(
             self,
