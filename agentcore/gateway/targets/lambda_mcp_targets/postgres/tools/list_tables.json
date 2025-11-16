@@ -1,9 +1,0 @@
-{
-  "name": "list_tables",
-  "description": "List all tables in the PostgreSQL database. Returns table names from the public schema that can be used with other PostgreSQL operations.",
-  "inputSchema": {
-    "type": "object",
-    "properties": {},
-    "required": []
-  }
-}

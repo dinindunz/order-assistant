@@ -23,160 +23,77 @@ def get_db_credentials():
 
 
 def get_products():
-    """Return the list of products to insert."""
+    """Return the list of products to insert - Restaurant/Wholesale Catalog."""
     return [
         {
-            "product_id": "MILK001",
-            "name": "Full Cream Milk",
-            "category": "Dairy",
-            "price": 4.50,
-            "unit": "2L",
-            "stock": 0,
-            "description": "Fresh full cream milk",
+            "product_id": "PROD-001",
+            "name": "Romaine lettuce",
+            "category": "Fresh Produce",
+            "price": 48.99,
+            "description": "Premium quality, fresh Romaine lettuce heads. Each case contains 24 carefully selected heads, triple-washed and individually wrapped. Ideal for restaurants, salad bars, and food service operations. Sourced from certified organic farms with consistent size and excellent shelf life.",
         },
         {
-            "product_id": "MILK002",
-            "name": "Skim Milk",
-            "category": "Dairy",
-            "price": 4.20,
-            "unit": "2L",
-            "stock": 120,
-            "description": "Low fat skim milk",
+            "product_id": "PROD-002",
+            "name": "Chicken breasts",
+            "category": "Poultry",
+            "price": 89.99,
+            "description": "Restaurant-grade, boneless, skinless chicken breasts. Each piece is hand-trimmed, portion-controlled (6-8 oz each), and individually vacuum-sealed. USDA Grade A, hormone-free, and air-chilled. Perfect for consistent portion control and easy inventory management.",
         },
         {
-            "product_id": "BREAD001",
-            "name": "White Bread",
+            "product_id": "PROD-003",
+            "name": "Salmon fillets",
+            "category": "Seafood",
+            "price": 159.99,
+            "description": "Premium center-cut Atlantic salmon fillets, skin-on and pin-bone removed. Each fillet is precisely cut to 6-8 oz portions and individually vacuum-sealed. Farm-raised in cold Norwegian waters, certified sustainable, and delivered fresh never frozen. Ideal for fine dining establishments.",
+        },
+        {
+            "product_id": "PROD-004",
+            "name": "Butter (unsalted)",
+            "category": "Dairy",
+            "price": 75.99,
+            "description": "Premium European-style butter with 82% butterfat content. Perfect for baking, sauce making, and culinary applications requiring high-quality butter. Each case contains 40 quarter-pound blocks, individually wrapped. Made from pasteurized cream from grass-fed cows.",
+        },
+        {
+            "product_id": "PROD-005",
+            "name": "All-purpose flour",
+            "category": "Baking & Pastry",
+            "price": 32.99,
+            "description": "Professional-grade all-purpose flour milled from selected hard and soft wheat varieties. Consistent 10.5% protein content ideal for multiple applications. Unbleached, unbromated, and certified kosher. Perfect for bakeries, restaurants, and institutional kitchens.",
+        },
+        {
+            "product_id": "PROD-006",
+            "name": "Sourdough Bread - Case of 5",
             "category": "Bakery",
-            "price": 3.50,
-            "unit": "700g",
-            "stock": 80,
-            "description": "Fresh white bread loaf",
+            "price": 45.99,
+            "description": "Handcrafted artisanal sourdough bread made with 100-year-old starter. Each loaf is naturally leavened for 24 hours, hearth-baked, and features a robust crust with complex flavor profile. Par-baked and flash-frozen to preserve quality. Perfect for high-end restaurants and cafes.",
         },
         {
-            "product_id": "BREAD002",
-            "name": "Wholemeal Bread",
-            "category": "Bakery",
-            "price": 4.00,
-            "unit": "700g",
-            "stock": 65,
-            "description": "Healthy wholemeal bread",
+            "product_id": "PROD-007",
+            "name": "Coffee Beans",
+            "category": "Beverages",
+            "price": 89.99,
+            "description": "Premium single-origin Arabica coffee beans from Ethiopian Yirgacheffe region. Medium roast with notes of bergamot, jasmine, and citrus. Roasted in small batches and packed immediately to ensure maximum freshness. Fair Trade certified and organic. Ideal for specialty coffee shops and restaurants.",
         },
         {
-            "product_id": "EGG001",
-            "name": "Free Range Eggs",
-            "category": "Dairy",
-            "price": 7.50,
-            "unit": "12 pack",
-            "stock": 200,
-            "description": "Free range eggs",
+            "product_id": "PROD-008",
+            "name": "Gourmet Dijon Mustard - 1 Gallon Jar",
+            "category": "Condiments",
+            "price": 29.99,
+            "description": "Authentic French Dijon mustard made with brown mustard seeds and white wine. Smooth, creamy texture with balanced heat and acidity. Perfect for dressings, marinades, and sauce applications. Contains no artificial preservatives or flavors. Essential for professional kitchens.",
         },
         {
-            "product_id": "APPLE001",
-            "name": "Royal Gala Apples",
-            "category": "Fruit",
-            "price": 5.99,
-            "unit": "1kg",
-            "stock": 300,
-            "description": "Sweet Royal Gala apples",
+            "product_id": "PROD-009",
+            "name": "Aged Balsamic Vinegar - 5L Container",
+            "category": "Condiments",
+            "price": 189.99,
+            "description": "Premium aged balsamic vinegar from Modena, Italy. Aged for 12 years in wooden barrels with perfect balance of sweetness and acidity. IGP certified with optimal density for glazing and finishing dishes. Ideal for fine dining establishments and gourmet food preparation.",
         },
         {
-            "product_id": "APPLE002",
-            "name": "Granny Smith Apples",
-            "category": "Fruit",
-            "price": 4.99,
-            "unit": "1kg",
-            "stock": 250,
-            "description": "Tart Granny Smith apples",
-        },
-        {
-            "product_id": "CHICKEN001",
-            "name": "Chicken Breast",
-            "category": "Meat",
-            "price": 12.99,
-            "unit": "1kg",
-            "stock": 0,
-            "description": "Fresh chicken breast fillets",
-        },
-        {
-            "product_id": "CHICKEN002",
-            "name": "Chicken Thighs",
-            "category": "Meat",
-            "price": 9.99,
-            "unit": "1kg",
-            "stock": 150,
-            "description": "Fresh chicken thigh fillets",
-        },
-        {
-            "product_id": "RICE001",
-            "name": "Jasmine Rice",
-            "category": "Pantry",
-            "price": 8.50,
-            "unit": "2kg",
-            "stock": 150,
-            "description": "Premium jasmine rice",
-        },
-        {
-            "product_id": "RICE002",
-            "name": "Basmati Rice",
-            "category": "Pantry",
-            "price": 9.99,
-            "unit": "2kg",
-            "stock": 120,
-            "description": "Aromatic basmati rice",
-        },
-        {
-            "product_id": "TOMATO001",
-            "name": "Tomatoes",
-            "category": "Vegetables",
-            "price": 6.99,
-            "unit": "1kg",
-            "stock": 180,
-            "description": "Fresh ripe tomatoes",
-        },
-        {
-            "product_id": "CHEESE001",
-            "name": "Cheddar Cheese",
-            "category": "Dairy",
-            "price": 10.99,
-            "unit": "500g",
-            "stock": 75,
-            "description": "Tasty cheddar cheese block",
-        },
-        {
-            "product_id": "CHEESE002",
-            "name": "Mozzarella Cheese",
-            "category": "Dairy",
-            "price": 8.99,
-            "unit": "500g",
-            "stock": 60,
-            "description": "Fresh mozzarella cheese",
-        },
-        {
-            "product_id": "BUTTER001",
-            "name": "Salted Butter",
-            "category": "Dairy",
-            "price": 5.50,
-            "unit": "500g",
-            "stock": 90,
-            "description": "Salted butter block",
-        },
-        {
-            "product_id": "COFFEE001",
-            "name": "Ground Coffee",
-            "category": "Pantry",
-            "price": 12.99,
-            "unit": "500g",
-            "stock": 110,
-            "description": "Medium roast ground coffee",
-        },
-        {
-            "product_id": "COFFEE002",
-            "name": "Instant Coffee",
-            "category": "Pantry",
-            "price": 8.99,
-            "unit": "200g",
-            "stock": 95,
-            "description": "Premium instant coffee",
+            "product_id": "PROD-010",
+            "name": "Wild Mushroom Blend - 5 lb Case",
+            "category": "Specialty Produce",
+            "price": 249.99,
+            "description": "Premium selection of wild mushrooms including porcini, chanterelles, and morels. Carefully cleaned, flash-frozen at peak freshness, and IQF packaged for easy portion control. Each variety hand-foraged from sustainable sources. Perfect for high-end restaurants and specialty cuisine.",
         },
     ]
 
@@ -216,9 +133,11 @@ def handler(event, context):
             print("Operation: SELECT - Displaying product catalog...")
 
             # Check if table exists
-            cursor.execute("""
-                SELECT COUNT(*) FROM products
-            """)
+            cursor.execute(
+                """
+                SELECT COUNT(*) FROM product_catalog
+            """
+            )
             total_count = cursor.fetchone()[0]
 
             if total_count == 0:
@@ -228,86 +147,83 @@ def handler(event, context):
                 conn.close()
                 return {
                     "statusCode": 200,
-                    "body": json.dumps({
-                        "message": message,
-                        "total_products": 0
-                    })
+                    "body": json.dumps({"message": message, "total_products": 0}),
                 }
 
             # Retrieve and display all products
-            print("\n" + "="*80)
+            print("\n" + "=" * 80)
             print("PRODUCT CATALOG - ALL ITEMS")
-            print("="*80)
-            cursor.execute("""
-                SELECT product_id, name, category, price, unit, stock, description
-                FROM products
-                ORDER BY category, name
-            """)
+            print("=" * 80)
+            cursor.execute(
+                """
+                SELECT product_id, product_name, product_category, product_price, product_description
+                FROM product_catalog
+                ORDER BY product_category, product_name
+            """
+            )
             all_products = cursor.fetchall()
 
             catalog_list = []
             for product in all_products:
-                product_id, name, category, price, unit, stock, description = product
-                stock_flag = "✓ IN STOCK" if stock > 0 else "✗ OUT OF STOCK"
+                product_id, name, category, price, description = product
                 print(f"\n{product_id} | {name}")
                 print(f"  Category: {category}")
-                print(f"  Price: ${price} per {unit}")
-                print(f"  Stock: {stock} units [{stock_flag}]")
+                print(f"  Price: ${price}")
                 print(f"  Description: {description}")
 
-                catalog_list.append({
-                    "product_id": product_id,
-                    "name": name,
-                    "category": category,
-                    "price": float(price),
-                    "unit": unit,
-                    "stock": stock,
-                    "description": description,
-                    "in_stock": stock > 0
-                })
+                catalog_list.append(
+                    {
+                        "product_id": product_id,
+                        "product_name": name,
+                        "product_category": category,
+                        "product_price": float(price),
+                        "product_description": description,
+                    }
+                )
 
-            print("\n" + "="*80)
+            print("\n" + "=" * 80)
 
             cursor.close()
             conn.close()
 
             return {
                 "statusCode": 200,
-                "body": json.dumps({
-                    "message": f"Retrieved {len(catalog_list)} products",
-                    "total_products": len(catalog_list),
-                    "products": catalog_list
-                })
+                "body": json.dumps(
+                    {
+                        "message": f"Retrieved {len(catalog_list)} products",
+                        "total_products": len(catalog_list),
+                        "products": catalog_list,
+                    }
+                ),
             }
 
-        # Create products table if it doesn't exist (for insert operation)
+        # Create product_catalog table if it doesn't exist (for insert operation)
         print("Operation: INSERT - Populating product catalog...")
-        print("Creating products table if it doesn't exist...")
+        print("Creating product_catalog table if it doesn't exist...")
         create_table_query = """
-        CREATE TABLE IF NOT EXISTS products (
-            product_id VARCHAR(50) PRIMARY KEY,
-            name VARCHAR(255) NOT NULL,
-            category VARCHAR(100) NOT NULL,
-            price DECIMAL(10, 2) NOT NULL,
-            unit VARCHAR(50) NOT NULL,
-            stock INTEGER NOT NULL DEFAULT 0,
-            description TEXT,
+        CREATE TABLE IF NOT EXISTS product_catalog (
+            id SERIAL PRIMARY KEY,
+            product_id VARCHAR(50) UNIQUE NOT NULL,
+            product_name VARCHAR(255) NOT NULL,
+            product_description TEXT,
+            product_category VARCHAR(100) NOT NULL,
+            product_price DECIMAL(10, 2) NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
         """
         cursor.execute(create_table_query)
         conn.commit()
-        print("Products table created/verified")
+        print("Product catalog table created/verified")
 
         # Check existing data
-        cursor.execute("SELECT COUNT(*) FROM products")
+        cursor.execute("SELECT COUNT(*) FROM product_catalog")
         existing_count = cursor.fetchone()[0]
         print(f"Found {existing_count} existing products in the database")
 
         if existing_count > 0 and clear_existing:
             print("Clearing existing products...")
-            cursor.execute("DELETE FROM products")
+            cursor.execute("DELETE FROM product_catalog")
             conn.commit()
             print("Existing products deleted")
         elif existing_count > 0:
@@ -331,15 +247,13 @@ def handler(event, context):
         print(f"Inserting {len(products)} products...")
 
         insert_query = """
-        INSERT INTO products (product_id, name, category, price, unit, stock, description)
+        INSERT INTO product_catalog (product_id, product_name, product_category, product_price, product_description)
         VALUES %s
         ON CONFLICT (product_id) DO UPDATE SET
-            name = EXCLUDED.name,
-            category = EXCLUDED.category,
-            price = EXCLUDED.price,
-            unit = EXCLUDED.unit,
-            stock = EXCLUDED.stock,
-            description = EXCLUDED.description,
+            product_name = EXCLUDED.product_name,
+            product_category = EXCLUDED.product_category,
+            product_price = EXCLUDED.product_price,
+            product_description = EXCLUDED.product_description,
             updated_at = CURRENT_TIMESTAMP
         """
 
@@ -349,8 +263,6 @@ def handler(event, context):
                 p["name"],
                 p["category"],
                 p["price"],
-                p["unit"],
-                p["stock"],
                 p["description"],
             )
             for p in products
@@ -367,30 +279,30 @@ def handler(event, context):
             categories[p["category"]] = categories.get(p["category"], 0) + 1
 
         # Verify data
-        cursor.execute("SELECT COUNT(*) FROM products")
+        cursor.execute("SELECT COUNT(*) FROM product_catalog")
         final_count = cursor.fetchone()[0]
 
         # Retrieve and display all products in the catalog
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("PRODUCT CATALOG - ALL ITEMS")
-        print("="*80)
-        cursor.execute("""
-            SELECT product_id, name, category, price, unit, stock, description
-            FROM products
-            ORDER BY category, name
-        """)
+        print("=" * 80)
+        cursor.execute(
+            """
+            SELECT product_id, product_name, product_category, product_price, product_description
+            FROM product_catalog
+            ORDER BY product_category, product_name
+        """
+        )
         all_products = cursor.fetchall()
 
         for product in all_products:
-            product_id, name, category, price, unit, stock, description = product
-            stock_flag = "✓ IN STOCK" if stock > 0 else "✗ OUT OF STOCK"
+            product_id, name, category, price, description = product
             print(f"\n{product_id} | {name}")
             print(f"  Category: {category}")
-            print(f"  Price: ${price} per {unit}")
-            print(f"  Stock: {stock} units [{stock_flag}]")
+            print(f"  Price: ${price}")
             print(f"  Description: {description}")
 
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
 
         cursor.close()
         conn.close()
