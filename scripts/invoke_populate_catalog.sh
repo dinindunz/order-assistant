@@ -12,12 +12,12 @@ echo "🔍 Getting Lambda function name from CloudFormation stack..."
 LAMBDA_NAME=$(aws cloudformation describe-stacks \
     --stack-name $STACK_NAME \
     --region $REGION \
-    --query "Stacks[0].Outputs[?OutputKey=='PopulateDBLambdaName'].OutputValue" \
+    --query "Stacks[0].Outputs[?OutputKey=='PopulateCatalogLambdaName'].OutputValue" \
     --output text)
 
 if [ -z "$LAMBDA_NAME" ]; then
-    echo "❌ Error: Could not find PopulateDBLambdaName in stack outputs"
-    echo "   Make sure the stack is deployed with the populate DB Lambda"
+    echo "❌ Error: Could not find PopulateCatalogLambdaName in stack outputs"
+    echo "   Make sure the stack is deployed with the populate catalog Lambda"
     exit 1
 fi
 

@@ -1,0 +1,19 @@
+{
+  "name": "update_order_status",
+  "description": "Update the status of an existing order. Valid statuses: PENDING, CONFIRMED, PROCESSING, SHIPPED, DELIVERED, CANCELLED. Returns updated order details.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "order_id": {
+        "type": "string",
+        "description": "The unique order ID to update (format: ORD-YYYYMMDDHHMMSS-XXXXXXXX)"
+      },
+      "new_status": {
+        "type": "string",
+        "enum": ["PENDING", "CONFIRMED", "PROCESSING", "SHIPPED", "DELIVERED", "CANCELLED"],
+        "description": "The new status for the order"
+      }
+    },
+    "required": ["order_id", "new_status"]
+  }
+}

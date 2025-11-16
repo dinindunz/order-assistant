@@ -189,13 +189,21 @@ def initialize_agents():
         ]
     )
 
-    # Load DynamoDB tools for orders and warehouse management
-    dynamodb_tools = load_mcp_tools(
+    # Load custom DynamoDB tools for order management
+    order_tools = load_mcp_tools(
+        tool_filter=[
+            "DynamoDBMCPTarget___place_order",
+            "DynamoDBMCPTarget___get_order",
+            "DynamoDBMCPTarget___update_order_status",
+        ]
+    )
+
+    # Load DynamoDB tools for warehouse management
+    wm_tools = load_mcp_tools(
         tool_filter=[
             "DynamoDBMCPTarget___scan_table",
             "DynamoDBMCPTarget___query_table",
             "DynamoDBMCPTarget___get_item",
-            "DynamoDBMCPTarget___batch_get_items",
         ]
     )
 
@@ -212,17 +220,17 @@ def initialize_agents():
         model=bedrock_model,
     )
 
-    # Order Agent - handles order placement with DynamoDB access
+    # Order Agent - handles order placement with custom DynamoDB tools
     order_agent = Agent(
         system_prompt=(BASE_DIR / "prompts/order.md").read_text(),
-        tools=dynamodb_tools,
+        tools=order_tools,
         model=bedrock_model,
     )
 
     # WM Agent - handles warehouse management and delivery scheduling with DynamoDB access
     wm_agent = Agent(
         system_prompt=(BASE_DIR / "prompts/wm.md").read_text(),
-        tools=dynamodb_tools,
+        tools=wm_tools,
         model=bedrock_model,
     )
 
