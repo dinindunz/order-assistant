@@ -1,5 +1,6 @@
 import os
 import logging
+import atexit
 from strands import Agent, tool
 from strands.models import BedrockModel
 from strands.tools.mcp.mcp_client import MCPClient
@@ -17,7 +18,14 @@ logger = logging.getLogger(__name__)
 
 # Global state
 bedrock_model = None
-mcp_client_context = None  # Store the MCP client context manager
+mcp_client = None
+mcp_tools = None
+mcp_client_started = False  # Track if MCP client session is active
+catalog_agent = None
+order_agent = None
+wm_agent = None
+image_processor_agent = None
+orchestrator_agent = None
 
 
 def create_streamable_http_transport(mcp_url: str, access_token: str):
@@ -49,7 +57,7 @@ def load_mcp_tools(tool_filter=None):
     Args:
         tool_filter: Optional list of tool name prefixes to filter (e.g., ['PostgreSQLMCPTarget___query'] for PostgreSQL)
     """
-    global mcp_tools, mcp_client
+    global mcp_tools, mcp_client, mcp_client_started
 
     # Return cached tools if no filter is specified and we have cached tools
     if mcp_tools is not None and tool_filter is None:
@@ -57,7 +65,7 @@ def load_mcp_tools(tool_filter=None):
 
     try:
         # Only initialize MCP client once
-        if mcp_client is None:
+        if mcp_client is None or not mcp_client_started:
             # Load gateway configuration
             gateway_config_path = BASE_DIR / "gateway_config.json"
             with open(gateway_config_path, "r") as f:
@@ -88,11 +96,22 @@ def load_mcp_tools(tool_filter=None):
 
             # Setup MCP client and keep it alive globally
             logger.info(f"Connecting to MCP gateway: {gateway_url}")
+
+            # Clean up existing client if present
+            if mcp_client is not None and mcp_client_started:
+                try:
+                    logger.info("Cleaning up existing MCP client session")
+                    mcp_client.__exit__(None, None, None)
+                    mcp_client_started = False
+                except Exception as e:
+                    logger.warning(f"Error cleaning up existing MCP client: {e}")
+
             mcp_client = MCPClient(
                 lambda: create_streamable_http_transport(gateway_url, access_token)
             )
             # Start the client - it will stay alive for the lifetime of the application
             mcp_client.__enter__()
+            mcp_client_started = True
             logger.info("✓ MCP client connected and active")
 
         # Get all tools from the MCP client
@@ -298,6 +317,28 @@ def health_check() -> Dict[str, Any]:
         "bedrock_model_ready": bedrock_model is not None,
         "aws_region": os.environ.get("AWS_REGION", "ap-southeast-2"),
     }
+
+
+def cleanup_mcp_client():
+    """Clean up MCP client resources"""
+    global mcp_client, mcp_client_started
+
+    try:
+        if mcp_client is not None and mcp_client_started:
+            logger.info("Cleaning up MCP client session")
+            try:
+                mcp_client.__exit__(None, None, None)
+                logger.info("✓ MCP client session closed")
+            except Exception as e:
+                logger.error(f"Error closing MCP client session: {e}")
+            finally:
+                mcp_client_started = False
+    except Exception as e:
+        logger.error(f"Error during MCP client cleanup: {e}")
+
+
+# Register cleanup handler
+atexit.register(cleanup_mcp_client)
 
 
 if __name__ == "__main__":
