@@ -147,6 +147,7 @@ def load_mcp_tools(tool_filter=None):
     except Exception as e:
         logger.error(f"Failed to load MCP tools: {e}")
         import traceback
+
         traceback.print_exc()
         return []
 
@@ -180,16 +181,22 @@ def initialize_agents():
     if bedrock_model is None:
         bedrock_model = create_bedrock_model()
 
-    # Load PostgreSQL tools for catalog (query, execute, list_tables, describe_table)
+    # Load custom PostgreSQL tools for product catalog
     postgres_tools = load_mcp_tools(
-        tool_filter=["PostgreSQLMCPTarget___query", "PostgreSQLMCPTarget___execute",
-                    "PostgreSQLMCPTarget___list_tables", "PostgreSQLMCPTarget___describe_table"]
+        tool_filter=[
+            "PostgreSQLMCPTarget___search_products_by_product_names",
+            "PostgreSQLMCPTarget___list_product_catalogue",
+        ]
     )
 
     # Load DynamoDB tools for orders and warehouse management
     dynamodb_tools = load_mcp_tools(
-        tool_filter=["DynamoDBMCPTarget___scan_table", "DynamoDBMCPTarget___query_table",
-                    "DynamoDBMCPTarget___get_item", "DynamoDBMCPTarget___batch_get_items"]
+        tool_filter=[
+            "DynamoDBMCPTarget___scan_table",
+            "DynamoDBMCPTarget___query_table",
+            "DynamoDBMCPTarget___get_item",
+            "DynamoDBMCPTarget___batch_get_items",
+        ]
     )
 
     # Import S3 tools from runtime/tools directory

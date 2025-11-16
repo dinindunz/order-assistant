@@ -64,7 +64,7 @@ class OrderAssistantStack(Stack):
             self,
             "OrderAssistantVpc",
             max_azs=2,
-            nat_gateways=1,
+            nat_gateways=0,
             subnet_configuration=[
                 ec2.SubnetConfiguration(
                     name="Public",
@@ -73,7 +73,7 @@ class OrderAssistantStack(Stack):
                 ),
                 ec2.SubnetConfiguration(
                     name="Isolated",
-                    subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS,
+                    subnet_type=ec2.SubnetType.PRIVATE_ISOLATED,
                     cidr_mask=24,
                 ),
             ],
@@ -106,7 +106,7 @@ class OrderAssistantStack(Stack):
         vpc.add_interface_endpoint(
             "SecretsManagerEndpoint",
             service=ec2.InterfaceVpcEndpointAwsService.SECRETS_MANAGER,
-            subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS),
+            subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PRIVATE_ISOLATED),
             security_groups=[rds_security_group],
         )
 
@@ -114,7 +114,7 @@ class OrderAssistantStack(Stack):
         vpc.add_interface_endpoint(
             "BedrockAgentRuntimeEndpoint",
             service=ec2.InterfaceVpcEndpointAwsService.BEDROCK_AGENT_RUNTIME,
-            subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS),
+            subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PRIVATE_ISOLATED),
             security_groups=[rds_security_group],
         )
 
@@ -127,7 +127,7 @@ class OrderAssistantStack(Stack):
             ),
             vpc=vpc,
             vpc_subnets=ec2.SubnetSelection(
-                subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS
+                subnet_type=ec2.SubnetType.PRIVATE_ISOLATED
             ),
             security_groups=[rds_security_group],
             default_database_name="orderassistant",
@@ -219,7 +219,7 @@ class OrderAssistantStack(Stack):
             memory_size=512,
             vpc=vpc,
             vpc_subnets=ec2.SubnetSelection(
-                subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS
+                subnet_type=ec2.SubnetType.PRIVATE_ISOLATED
             ),
             security_groups=[rds_security_group],
             environment={
@@ -227,9 +227,6 @@ class OrderAssistantStack(Stack):
                 "POSTGRES_PORT": "5432",
                 "POSTGRES_DB": "orderassistant",
                 "POSTGRES_SECRET_ARN": db_cluster.secret.secret_arn,
-                "FASTMCP_LOG_LEVEL": "ERROR",
-                "UV_CACHE_DIR": "/tmp/uv_cache",
-                "XDG_CACHE_HOME": "/tmp",
             },
         )
 
@@ -254,7 +251,7 @@ class OrderAssistantStack(Stack):
             memory_size=512,
             vpc=vpc,
             vpc_subnets=ec2.SubnetSelection(
-                subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS
+                subnet_type=ec2.SubnetType.PRIVATE_ISOLATED
             ),
             security_groups=[rds_security_group],
             environment={

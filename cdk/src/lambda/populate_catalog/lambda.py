@@ -216,9 +216,11 @@ def handler(event, context):
             print("Operation: SELECT - Displaying product catalog...")
 
             # Check if table exists
-            cursor.execute("""
-                SELECT COUNT(*) FROM products
-            """)
+            cursor.execute(
+                """
+                SELECT COUNT(*) FROM product_catalog
+            """
+            )
             total_count = cursor.fetchone()[0]
 
             if total_count == 0:
@@ -228,86 +230,83 @@ def handler(event, context):
                 conn.close()
                 return {
                     "statusCode": 200,
-                    "body": json.dumps({
-                        "message": message,
-                        "total_products": 0
-                    })
+                    "body": json.dumps({"message": message, "total_products": 0}),
                 }
 
             # Retrieve and display all products
-            print("\n" + "="*80)
+            print("\n" + "=" * 80)
             print("PRODUCT CATALOG - ALL ITEMS")
-            print("="*80)
-            cursor.execute("""
-                SELECT product_id, name, category, price, unit, stock, description
-                FROM products
-                ORDER BY category, name
-            """)
+            print("=" * 80)
+            cursor.execute(
+                """
+                SELECT product_id, product_name, product_category, product_price, product_description
+                FROM product_catalog
+                ORDER BY product_category, product_name
+            """
+            )
             all_products = cursor.fetchall()
 
             catalog_list = []
             for product in all_products:
-                product_id, name, category, price, unit, stock, description = product
-                stock_flag = "✓ IN STOCK" if stock > 0 else "✗ OUT OF STOCK"
+                product_id, name, category, price, description = product
                 print(f"\n{product_id} | {name}")
                 print(f"  Category: {category}")
-                print(f"  Price: ${price} per {unit}")
-                print(f"  Stock: {stock} units [{stock_flag}]")
+                print(f"  Price: ${price}")
                 print(f"  Description: {description}")
 
-                catalog_list.append({
-                    "product_id": product_id,
-                    "name": name,
-                    "category": category,
-                    "price": float(price),
-                    "unit": unit,
-                    "stock": stock,
-                    "description": description,
-                    "in_stock": stock > 0
-                })
+                catalog_list.append(
+                    {
+                        "product_id": product_id,
+                        "product_name": name,
+                        "product_category": category,
+                        "product_price": float(price),
+                        "product_description": description,
+                    }
+                )
 
-            print("\n" + "="*80)
+            print("\n" + "=" * 80)
 
             cursor.close()
             conn.close()
 
             return {
                 "statusCode": 200,
-                "body": json.dumps({
-                    "message": f"Retrieved {len(catalog_list)} products",
-                    "total_products": len(catalog_list),
-                    "products": catalog_list
-                })
+                "body": json.dumps(
+                    {
+                        "message": f"Retrieved {len(catalog_list)} products",
+                        "total_products": len(catalog_list),
+                        "products": catalog_list,
+                    }
+                ),
             }
 
-        # Create products table if it doesn't exist (for insert operation)
+        # Create product_catalog table if it doesn't exist (for insert operation)
         print("Operation: INSERT - Populating product catalog...")
-        print("Creating products table if it doesn't exist...")
+        print("Creating product_catalog table if it doesn't exist...")
         create_table_query = """
-        CREATE TABLE IF NOT EXISTS products (
-            product_id VARCHAR(50) PRIMARY KEY,
-            name VARCHAR(255) NOT NULL,
-            category VARCHAR(100) NOT NULL,
-            price DECIMAL(10, 2) NOT NULL,
-            unit VARCHAR(50) NOT NULL,
-            stock INTEGER NOT NULL DEFAULT 0,
-            description TEXT,
+        CREATE TABLE IF NOT EXISTS product_catalog (
+            id SERIAL PRIMARY KEY,
+            product_id VARCHAR(50) UNIQUE NOT NULL,
+            product_name VARCHAR(255) NOT NULL,
+            product_description TEXT,
+            product_category VARCHAR(100) NOT NULL,
+            product_price DECIMAL(10, 2) NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
         """
         cursor.execute(create_table_query)
         conn.commit()
-        print("Products table created/verified")
+        print("Product catalog table created/verified")
 
         # Check existing data
-        cursor.execute("SELECT COUNT(*) FROM products")
+        cursor.execute("SELECT COUNT(*) FROM product_catalog")
         existing_count = cursor.fetchone()[0]
         print(f"Found {existing_count} existing products in the database")
 
         if existing_count > 0 and clear_existing:
             print("Clearing existing products...")
-            cursor.execute("DELETE FROM products")
+            cursor.execute("DELETE FROM product_catalog")
             conn.commit()
             print("Existing products deleted")
         elif existing_count > 0:
@@ -331,15 +330,13 @@ def handler(event, context):
         print(f"Inserting {len(products)} products...")
 
         insert_query = """
-        INSERT INTO products (product_id, name, category, price, unit, stock, description)
+        INSERT INTO product_catalog (product_id, product_name, product_category, product_price, product_description)
         VALUES %s
         ON CONFLICT (product_id) DO UPDATE SET
-            name = EXCLUDED.name,
-            category = EXCLUDED.category,
-            price = EXCLUDED.price,
-            unit = EXCLUDED.unit,
-            stock = EXCLUDED.stock,
-            description = EXCLUDED.description,
+            product_name = EXCLUDED.product_name,
+            product_category = EXCLUDED.product_category,
+            product_price = EXCLUDED.product_price,
+            product_description = EXCLUDED.product_description,
             updated_at = CURRENT_TIMESTAMP
         """
 
@@ -349,8 +346,6 @@ def handler(event, context):
                 p["name"],
                 p["category"],
                 p["price"],
-                p["unit"],
-                p["stock"],
                 p["description"],
             )
             for p in products
@@ -367,30 +362,30 @@ def handler(event, context):
             categories[p["category"]] = categories.get(p["category"], 0) + 1
 
         # Verify data
-        cursor.execute("SELECT COUNT(*) FROM products")
+        cursor.execute("SELECT COUNT(*) FROM product_catalog")
         final_count = cursor.fetchone()[0]
 
         # Retrieve and display all products in the catalog
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("PRODUCT CATALOG - ALL ITEMS")
-        print("="*80)
-        cursor.execute("""
-            SELECT product_id, name, category, price, unit, stock, description
-            FROM products
-            ORDER BY category, name
-        """)
+        print("=" * 80)
+        cursor.execute(
+            """
+            SELECT product_id, product_name, product_category, product_price, product_description
+            FROM product_catalog
+            ORDER BY product_category, product_name
+        """
+        )
         all_products = cursor.fetchall()
 
         for product in all_products:
-            product_id, name, category, price, unit, stock, description = product
-            stock_flag = "✓ IN STOCK" if stock > 0 else "✗ OUT OF STOCK"
+            product_id, name, category, price, description = product
             print(f"\n{product_id} | {name}")
             print(f"  Category: {category}")
-            print(f"  Price: ${price} per {unit}")
-            print(f"  Stock: {stock} units [{stock_flag}]")
+            print(f"  Price: ${price}")
             print(f"  Description: {description}")
 
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
 
         cursor.close()
         conn.close()

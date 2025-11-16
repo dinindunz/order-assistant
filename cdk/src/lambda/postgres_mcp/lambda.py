@@ -1,13 +1,13 @@
 """
-Lambda handler for PostgreSQL MCP Server
-This Lambda function hosts the awslabs.postgres-mcp-server
+Lambda handler for Custom PostgreSQL Tools
+This Lambda function provides custom tools for product catalog queries
 """
 
 import json
 import os
-import subprocess
 import boto3
 import logging
+import psycopg2
 
 # Set up logging
 logger = logging.getLogger()
@@ -31,148 +31,199 @@ def get_db_credentials():
 
     logger.info(f"Successfully retrieved credentials for user: {secret['username']}")
     return {
-        "username": secret["username"],
+        "host": os.environ.get("POSTGRES_HOST"),
+        "port": os.environ.get("POSTGRES_PORT", "5432"),
+        "database": os.environ.get("POSTGRES_DB"),
+        "user": secret["username"],
         "password": secret["password"],
     }
 
 
-def handler(event, context):
-    """
-    Lambda handler that runs the PostgreSQL MCP server
-
-    The MCP server is executed using uvx (uv's command runner)
-    Environment variables are passed through from Lambda configuration
-    """
-    logger.info("=== PostgreSQL MCP Lambda Handler Started ===")
-    logger.info(f"Request ID: {context.aws_request_id}")
-
-    # Log the incoming event (sanitized)
-    logger.info(f"Event keys: {list(event.keys())}")
-
-    # Get database credentials from Secrets Manager
+def get_database_connection():
+    """Establish database connection"""
     try:
         credentials = get_db_credentials()
+
+        logger.info(
+            f"Connecting to database: {credentials['host']}:{credentials['port']}/{credentials['database']}"
+        )
+        conn = psycopg2.connect(
+            host=credentials["host"],
+            port=credentials["port"],
+            database=credentials["database"],
+            user=credentials["user"],
+            password=credentials["password"],
+        )
+        logger.info("✓ Database connection established")
+        return conn
     except Exception as e:
-        logger.error(f"Failed to retrieve database credentials: {str(e)}", exc_info=True)
+        logger.error(f"Failed to connect to database: {str(e)}", exc_info=True)
         raise
 
-    # Set up environment variables from Lambda configuration
-    env = os.environ.copy()
 
-    # Add database credentials to environment
-    env["POSTGRES_USER"] = credentials["username"]
-    env["POSTGRES_PASSWORD"] = credentials["password"]
+def search_products_by_product_names(product_names):
+    """
+    Search for multiple products by their names in the product_catalog table.
+    Args:
+        product_names (list): List of product names to search for
+    Returns:
+        list: List of matching products with details
+    """
+    logger.info(f"Searching for products: {product_names}")
 
-    # Log database connection details (without password)
-    logger.info(f"Database connection config:")
-    logger.info(f"  POSTGRES_HOST: {env.get('POSTGRES_HOST', 'NOT SET')}")
-    logger.info(f"  POSTGRES_PORT: {env.get('POSTGRES_PORT', 'NOT SET')}")
-    logger.info(f"  POSTGRES_DB: {env.get('POSTGRES_DB', 'NOT SET')}")
-    logger.info(f"  POSTGRES_USER: {env.get('POSTGRES_USER', 'NOT SET')}")
-
-    # Parse the incoming MCP request
     try:
-        body = (
-            json.loads(event.get("body", "{}"))
-            if isinstance(event.get("body"), str)
-            else event.get("body", {})
+        conn = get_database_connection()
+        cursor = conn.cursor()
+
+        search_query = """
+        SELECT
+            id,
+            product_id,
+            product_name,
+            product_description,
+            product_category,
+            product_price
+        FROM product_catalog
+        WHERE LOWER(product_name) LIKE ANY(%s)
+        ORDER BY product_category, product_name;
+        """
+
+        search_patterns = [f"%{name.lower()}%" for name in product_names]
+        cursor.execute(search_query, (search_patterns,))
+        results = cursor.fetchall()
+
+        cursor.close()
+        conn.close()
+
+        if not results:
+            logger.info("No products found matching the search criteria")
+            return []
+
+        formatted_results = []
+        for row in results:
+            product = {
+                "product_name": row[2],
+                "product_description": row[3],
+                "product_category": row[4],
+                "price": float(row[5]),
+            }
+            formatted_results.append(product)
+
+        logger.info(f"Found {len(formatted_results)} matching products")
+        return formatted_results
+
+    except Exception as e:
+        logger.error(f"Error searching products: {str(e)}", exc_info=True)
+        raise
+
+
+def list_product_catalogue():
+    """Retrieve all products from the catalogue"""
+    logger.info("Retrieving all products from catalogue")
+
+    try:
+        conn = get_database_connection()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            "SELECT * FROM public.product_catalog ORDER BY product_category, product_name;"
         )
+        results = cursor.fetchall()
 
-        # For MCP protocol, we need to handle JSON-RPC style requests
-        method = body.get("method", "")
-        params = body.get("params", {})
-        request_id = body.get("id", 1)
+        cursor.close()
+        conn.close()
 
-        logger.info(f"MCP Request - Method: {method}, Request ID: {request_id}")
-        logger.info(f"MCP Request - Params: {json.dumps(params, indent=2)}")
+        if not results:
+            logger.info("No products found in catalogue")
+            return []
 
-        # Run the MCP server command
-        # The PostgreSQL MCP server uses environment variables for connection:
-        # - POSTGRES_HOST
-        # - POSTGRES_PORT
-        # - POSTGRES_DB
-        # - POSTGRES_USER
-        # - POSTGRES_PASSWORD
+        formatted_results = []
+        for row in results:
+            product = {
+                "product_name": row[2],
+                "product_description": row[3],
+                "product_category": row[4],
+                "price": float(row[5]),
+            }
+            formatted_results.append(product)
 
-        logger.info("Executing PostgreSQL MCP server (pre-installed via uv)...")
-        logger.info(f"Input to MCP server: {json.dumps(body, indent=2)}")
+        logger.info(f"Retrieved {len(formatted_results)} products from catalogue")
+        return formatted_results
 
-        # Use the pre-installed binary directly from /opt/uv/bin
-        # This was installed via 'uv tool install' in the Dockerfile
-        result = subprocess.run(
-            ["awslabs.postgres-mcp-server"],
-            input=json.dumps(body),
-            capture_output=True,
-            text=True,
-            env=env,
-            timeout=300,  # 5 minute timeout
-        )
+    except Exception as e:
+        logger.error(f"Error retrieving catalogue: {str(e)}", exc_info=True)
+        raise
 
-        logger.info(f"MCP server process completed with return code: {result.returncode}")
 
-        if result.stdout:
-            logger.info(f"MCP server stdout: {result.stdout}")
-        if result.stderr:
-            logger.warning(f"MCP server stderr: {result.stderr}")
+def handler(event, context):
+    """
+    Lambda handler - Gateway sends tool parameters directly in event
+    Event formats:
+    - search_products_by_product_names: {"product_names": ["milk", "bread"]}
+    - list_product_catalogue: {} (empty)
+    """
+    logger.info("=== PostgreSQL Custom Tools Lambda Handler Started ===")
+    logger.info(f"Request ID: {context.aws_request_id}")
+    logger.info(f"Event: {json.dumps(event, default=str)}")
 
-        if result.returncode == 0:
-            try:
-                response_data = json.loads(result.stdout) if result.stdout else {}
-                logger.info(f"MCP server response parsed successfully")
-                logger.info(f"Response data: {json.dumps(response_data, indent=2)}")
-                return {
-                    "statusCode": 200,
-                    "headers": {"Content-Type": "application/json"},
-                    "body": json.dumps(response_data),
-                }
-            except json.JSONDecodeError as e:
-                logger.error(f"Failed to parse MCP server response as JSON: {str(e)}")
-                logger.error(f"Raw stdout: {result.stdout}")
-                return {
-                    "statusCode": 500,
-                    "headers": {"Content-Type": "application/json"},
-                    "body": json.dumps(
-                        {
-                            "error": "Failed to parse MCP server response",
-                            "details": str(e),
-                            "raw_output": result.stdout,
-                        }
-                    ),
-                }
+    try:
+        # Determine which tool based on event content
+        if "product_names" in event:
+            # search_products_by_product_names
+            logger.info("Tool: search_products_by_product_names")
+            product_names = event.get("product_names", [])
+
+            if not product_names:
+                raise ValueError("product_names parameter is required")
+
+            result = search_products_by_product_names(product_names)
+
+        elif not event or event == {}:
+            # list_product_catalogue (empty event)
+            logger.info("Tool: list_product_catalogue")
+            result = list_product_catalogue()
+
         else:
-            logger.error(f"MCP server failed with return code {result.returncode}")
-            logger.error(f"stderr: {result.stderr}")
-            error_response = {
-                "error": "MCP server error",
-                "stderr": result.stderr,
-                "stdout": result.stdout,
-                "returncode": result.returncode,
-            }
+            # Unknown format
+            logger.error(f"Unknown event format")
             return {
-                "statusCode": 500,
-                "headers": {"Content-Type": "application/json"},
-                "body": json.dumps(error_response),
+                "statusCode": 400,
+                "body": json.dumps(
+                    {
+                        "error": "Invalid request format",
+                        "expected": "Either {'product_names': [...]} or empty {}",
+                        "received_keys": list(event.keys()),
+                    }
+                ),
             }
 
-    except subprocess.TimeoutExpired as e:
-        logger.error(f"MCP server execution timed out after 300 seconds", exc_info=True)
+        logger.info(f"✓ Tool execution successful, returning {len(result)} results")
+
+        # Return simple JSON response
         return {
-            "statusCode": 500,
-            "headers": {"Content-Type": "application/json"},
-            "body": json.dumps({
-                "error": "MCP server execution timeout",
-                "type": "TimeoutExpired",
-                "details": str(e),
-            }),
+            "statusCode": 200,
+            "body": json.dumps(result),
+        }
+
+    except ValueError as e:
+        logger.error(f"Validation error: {str(e)}", exc_info=True)
+        return {
+            "statusCode": 400,
+            "body": json.dumps(
+                {
+                    "error": "Validation error",
+                    "details": str(e),
+                }
+            ),
         }
     except Exception as e:
-        logger.error(f"Unexpected error in Lambda handler: {str(e)}", exc_info=True)
-        logger.error(f"Exception type: {type(e).__name__}")
+        logger.error(f"Unexpected error: {str(e)}", exc_info=True)
         return {
             "statusCode": 500,
-            "headers": {"Content-Type": "application/json"},
-            "body": json.dumps({
-                "error": str(e),
-                "type": type(e).__name__,
-            }),
+            "body": json.dumps(
+                {
+                    "error": str(e),
+                    "type": type(e).__name__,
+                }
+            ),
         }
