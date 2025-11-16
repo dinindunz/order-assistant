@@ -1,6 +1,6 @@
 {
   "name": "search_products_by_product_names",
-  "description": "Search for products by their names in the product catalog. Supports partial matching and multiple product names. Returns product details including name, description, category, and price.",
+  "description": "Search for products by their names in the product catalog. Supports partial matching and multiple product names. Returns product details including name, description, category, price, and stock_level.",
   "inputSchema": {
     "type": "object",
     "properties": {
