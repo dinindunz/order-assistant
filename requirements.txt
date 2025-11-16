@@ -4,4 +4,4 @@ bedrock-agentcore
 strands-agents
 strands-agents-tools
 bedrock-agentcore-starter-toolkit
-psycopg2
+psycopg2-binary
