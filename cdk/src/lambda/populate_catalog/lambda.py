@@ -39,7 +39,7 @@ def get_products():
             "category": "Poultry",
             "price": 89.99,
             "description": "Restaurant-grade, boneless, skinless chicken breasts. Each piece is hand-trimmed, portion-controlled (6-8 oz each), and individually vacuum-sealed. USDA Grade A, hormone-free, and air-chilled. Perfect for consistent portion control and easy inventory management.",
-            "stock_level": 200,
+            "stock_level": 0,
         },
         {
             "product_id": "PROD-003",
@@ -220,6 +220,9 @@ def handler(event, context):
         # Create product_catalog table if it doesn't exist (for insert operation)
         print("Operation: INSERT - Populating product catalog...")
         print("Creating product_catalog table if it doesn't exist...")
+        drop_table_query = "DROP TABLE IF EXISTS product_catalog;"
+        cursor.execute(drop_table_query)
+        conn.commit()
         create_table_query = """
         CREATE TABLE IF NOT EXISTS product_catalog (
             id SERIAL PRIMARY KEY,
