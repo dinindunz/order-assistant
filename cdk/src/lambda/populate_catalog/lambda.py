@@ -189,7 +189,8 @@ def handler(event, context):
     db_port = os.environ["POSTGRES_PORT"]
     db_name = os.environ["POSTGRES_DB"]
 
-    # Check if we should clear existing data
+    # Check operation mode
+    operation = event.get("operation", "insert")  # Options: "insert" or "select"
     clear_existing = event.get("clear_existing", False)
 
     try:
@@ -210,7 +211,77 @@ def handler(event, context):
         cursor = conn.cursor()
         print("Connected successfully!")
 
-        # Create products table if it doesn't exist
+        # If operation is "select", just display the catalog and return
+        if operation == "select":
+            print("Operation: SELECT - Displaying product catalog...")
+
+            # Check if table exists
+            cursor.execute("""
+                SELECT COUNT(*) FROM products
+            """)
+            total_count = cursor.fetchone()[0]
+
+            if total_count == 0:
+                message = "No products found in the catalog."
+                print(message)
+                cursor.close()
+                conn.close()
+                return {
+                    "statusCode": 200,
+                    "body": json.dumps({
+                        "message": message,
+                        "total_products": 0
+                    })
+                }
+
+            # Retrieve and display all products
+            print("\n" + "="*80)
+            print("PRODUCT CATALOG - ALL ITEMS")
+            print("="*80)
+            cursor.execute("""
+                SELECT product_id, name, category, price, unit, stock, description
+                FROM products
+                ORDER BY category, name
+            """)
+            all_products = cursor.fetchall()
+
+            catalog_list = []
+            for product in all_products:
+                product_id, name, category, price, unit, stock, description = product
+                stock_flag = "✓ IN STOCK" if stock > 0 else "✗ OUT OF STOCK"
+                print(f"\n{product_id} | {name}")
+                print(f"  Category: {category}")
+                print(f"  Price: ${price} per {unit}")
+                print(f"  Stock: {stock} units [{stock_flag}]")
+                print(f"  Description: {description}")
+
+                catalog_list.append({
+                    "product_id": product_id,
+                    "name": name,
+                    "category": category,
+                    "price": float(price),
+                    "unit": unit,
+                    "stock": stock,
+                    "description": description,
+                    "in_stock": stock > 0
+                })
+
+            print("\n" + "="*80)
+
+            cursor.close()
+            conn.close()
+
+            return {
+                "statusCode": 200,
+                "body": json.dumps({
+                    "message": f"Retrieved {len(catalog_list)} products",
+                    "total_products": len(catalog_list),
+                    "products": catalog_list
+                })
+            }
+
+        # Create products table if it doesn't exist (for insert operation)
+        print("Operation: INSERT - Populating product catalog...")
         print("Creating products table if it doesn't exist...")
         create_table_query = """
         CREATE TABLE IF NOT EXISTS products (
@@ -298,6 +369,28 @@ def handler(event, context):
         # Verify data
         cursor.execute("SELECT COUNT(*) FROM products")
         final_count = cursor.fetchone()[0]
+
+        # Retrieve and display all products in the catalog
+        print("\n" + "="*80)
+        print("PRODUCT CATALOG - ALL ITEMS")
+        print("="*80)
+        cursor.execute("""
+            SELECT product_id, name, category, price, unit, stock, description
+            FROM products
+            ORDER BY category, name
+        """)
+        all_products = cursor.fetchall()
+
+        for product in all_products:
+            product_id, name, category, price, unit, stock, description = product
+            stock_flag = "✓ IN STOCK" if stock > 0 else "✗ OUT OF STOCK"
+            print(f"\n{product_id} | {name}")
+            print(f"  Category: {category}")
+            print(f"  Price: ${price} per {unit}")
+            print(f"  Stock: {stock} units [{stock_flag}]")
+            print(f"  Description: {description}")
+
+        print("\n" + "="*80)
 
         cursor.close()
         conn.close()

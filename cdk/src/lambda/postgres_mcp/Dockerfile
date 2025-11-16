@@ -1,5 +1,5 @@
 # Use AWS Lambda Python base image
-FROM public.ecr.aws/lambda/python:3.12
+FROM --platform=linux/amd64 public.ecr.aws/lambda/python:3.12
 
 # Install uv (which includes uvx)
 RUN pip install --no-cache-dir uv

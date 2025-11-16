@@ -15,14 +15,9 @@ BASE_DIR = pathlib.Path(__file__).absolute().parent
 
 logger = logging.getLogger(__name__)
 
-# Global agents
-orchestrator_agent = None
-catalog_agent = None
-order_agent = None
-wm_agent = None
-image_processor_agent = None
+# Global state
 bedrock_model = None
-mcp_tools = None
+mcp_client_context = None  # Store the MCP client context manager
 
 
 def create_streamable_http_transport(mcp_url: str, access_token: str):
@@ -52,82 +47,88 @@ def load_mcp_tools(tool_filter=None):
     """Load MCP tools from AgentCore Gateway
 
     Args:
-        tool_filter: Optional list of tool name prefixes to filter (e.g., ['query', 'execute'] for PostgreSQL)
+        tool_filter: Optional list of tool name prefixes to filter (e.g., ['PostgreSQLMCPTarget___query'] for PostgreSQL)
     """
-    global mcp_tools
+    global mcp_tools, mcp_client
 
     # Return cached tools if no filter is specified and we have cached tools
     if mcp_tools is not None and tool_filter is None:
         return mcp_tools
 
     try:
-        # Load gateway configuration
-        gateway_config_path = BASE_DIR / "gateway_config.json"
-        with open(gateway_config_path, "r") as f:
-            config = json.load(f)
+        # Only initialize MCP client once
+        if mcp_client is None:
+            # Load gateway configuration
+            gateway_config_path = BASE_DIR / "gateway_config.json"
+            with open(gateway_config_path, "r") as f:
+                config = json.load(f)
 
-        gateway_url = config["gateway_url"]
-        gateway_id = config["gateway_id"]
-        region = config["region"]
+            gateway_url = config["gateway_url"]
+            gateway_id = config["gateway_id"]
+            region = config["region"]
 
-        # Get client_info from Secrets Manager
-        client_info = config.get("client_info")
-        try:
-            secrets_client = boto3.client("secretsmanager", region_name=region)
-            secret_name = f"agentcore/gateway/{gateway_id}/client-info"
-            response = secrets_client.get_secret_value(SecretId=secret_name)
-            client_info = json.loads(response["SecretString"])
-            logger.info(f"Retrieved client_info from Secrets Manager")
-        except Exception as e:
-            logger.warning(
-                f"Could not retrieve from Secrets Manager, using config file: {e}"
+            # Get client_info from Secrets Manager
+            client_info = config.get("client_info")
+            try:
+                secrets_client = boto3.client("secretsmanager", region_name=region)
+                secret_name = f"agentcore/gateway/{gateway_id}/client-info"
+                response = secrets_client.get_secret_value(SecretId=secret_name)
+                client_info = json.loads(response["SecretString"])
+                logger.info(f"Retrieved client_info from Secrets Manager")
+            except Exception as e:
+                logger.warning(
+                    f"Could not retrieve from Secrets Manager, using config file: {e}"
+                )
+
+            # Get access token
+            logger.info("Getting access token for MCP gateway...")
+            gateway_client = GatewayClient(region_name=region)
+            access_token = gateway_client.get_access_token_for_cognito(client_info)
+            logger.info("✓ Access token obtained")
+
+            # Setup MCP client and keep it alive globally
+            logger.info(f"Connecting to MCP gateway: {gateway_url}")
+            mcp_client = MCPClient(
+                lambda: create_streamable_http_transport(gateway_url, access_token)
             )
+            # Start the client - it will stay alive for the lifetime of the application
+            mcp_client.__enter__()
+            logger.info("✓ MCP client connected and active")
 
-        # Get access token
-        logger.info("Getting access token for MCP gateway...")
-        client = GatewayClient(region_name=region)
-        access_token = client.get_access_token_for_cognito(client_info)
-        logger.info("✓ Access token obtained")
+        # Get all tools from the MCP client
+        if mcp_tools is None:
+            all_tools = get_full_tools_list(mcp_client)
+            mcp_tools = all_tools
+            logger.info(
+                f"✓ Loaded {len(all_tools)} MCP tools: {[tool.tool_name for tool in all_tools]}"
+            )
+        else:
+            all_tools = mcp_tools
 
-        # Setup MCP client and get tools
-        logger.info(f"Connecting to MCP gateway: {gateway_url}")
-        mcp_client = MCPClient(
-            lambda: create_streamable_http_transport(gateway_url, access_token)
-        )
-        mcp_client.start()
-
-        with mcp_client:
-            all_tools = get_full_tools_list(mcp_client.list_tools_sync())
-
-            # Cache all tools if not already cached
-            if mcp_tools is None:
-                mcp_tools = all_tools
-
-            # Filter tools if requested
-            if tool_filter:
-                filtered_tools = [
-                    tool
-                    for tool in all_tools
-                    if any(tool.tool_name.startswith(prefix) for prefix in tool_filter)
-                ]
-                logger.info(
-                    f"✓ Loaded {len(filtered_tools)} filtered MCP tools: {[tool.tool_name for tool in filtered_tools]}"
-                )
-                return filtered_tools
-            else:
-                logger.info(
-                    f"✓ Loaded {len(all_tools)} MCP tools: {[tool.tool_name for tool in all_tools]}"
-                )
-                return all_tools
+        # Filter tools if requested
+        if tool_filter:
+            filtered_tools = [
+                tool
+                for tool in all_tools
+                if any(tool.tool_name.startswith(prefix) for prefix in tool_filter)
+            ]
+            logger.info(
+                f"✓ Filtered to {len(filtered_tools)} tools: {[tool.tool_name for tool in filtered_tools]}"
+            )
+            return filtered_tools
+        else:
+            return all_tools
 
     except FileNotFoundError:
         logger.warning(
-            "gateway_config.json not found. DynamoDB MCP tools will not be available."
+            "gateway_config.json not found. MCP tools will not be available."
         )
         logger.warning("Run 'python setup_gateway.py' to create the Gateway.")
         return []
     except Exception as e:
         logger.error(f"Failed to load MCP tools: {e}")
+        import traceback
+        traceback.print_exc()
         return []
 
 
@@ -162,12 +163,14 @@ def initialize_agents():
 
     # Load PostgreSQL tools for catalog (query, execute, list_tables, describe_table)
     postgres_tools = load_mcp_tools(
-        tool_filter=["query", "execute", "list_tables", "describe_table"]
+        tool_filter=["PostgreSQLMCPTarget___query", "PostgreSQLMCPTarget___execute",
+                    "PostgreSQLMCPTarget___list_tables", "PostgreSQLMCPTarget___describe_table"]
     )
 
     # Load DynamoDB tools for orders and warehouse management
     dynamodb_tools = load_mcp_tools(
-        tool_filter=["scan_table", "query_table", "get_item", "batch_get"]
+        tool_filter=["DynamoDBMCPTarget___scan_table", "DynamoDBMCPTarget___query_table",
+                    "DynamoDBMCPTarget___get_item", "DynamoDBMCPTarget___batch_get_items"]
     )
 
     # Import S3 tools from runtime/tools directory
