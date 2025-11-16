@@ -94,11 +94,13 @@ def handler(event, context):
         # - POSTGRES_USER
         # - POSTGRES_PASSWORD
 
-        logger.info("Executing PostgreSQL MCP server via uvx...")
+        logger.info("Executing PostgreSQL MCP server (pre-installed via uv)...")
         logger.info(f"Input to MCP server: {json.dumps(body, indent=2)}")
 
+        # Use the pre-installed binary directly from /opt/uv/bin
+        # This was installed via 'uv tool install' in the Dockerfile
         result = subprocess.run(
-            ["uvx", "awslabs.postgres-mcp-server@latest"],
+            ["awslabs.postgres-mcp-server"],
             input=json.dumps(body),
             capture_output=True,
             text=True,
