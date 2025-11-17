@@ -25,6 +25,26 @@ table = dynamodb.Table(table_name)
 # Sample delivery slots with various statuses
 sample_slots = [
     {
+        'slot_id': 'SLOT-20251119-001',
+        'slot_date': '2025-11-19',
+        'start_time': '08:00',
+        'end_time': '10:00',
+        'slot_capacity': 5,
+        'postcode_coverage': 'SW1A',
+        'slot_status': 'available',
+        'is_active': True
+    },
+    {
+        'slot_id': 'SLOT-20251120-001',
+        'slot_date': '2025-11-20',
+        'start_time': '08:00',
+        'end_time': '10:00',
+        'slot_capacity': 5,
+        'postcode_coverage': 'SW1A',
+        'slot_status': 'available',
+        'is_active': True
+    },
+    {
         'slot_id': 'SLOT-20251203-001',
         'slot_date': '2025-12-03',
         'start_time': '08:00',

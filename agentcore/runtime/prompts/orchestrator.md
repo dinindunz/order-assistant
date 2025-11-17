@@ -73,10 +73,8 @@ When you receive input from the user:
 
 ### Step 6: Schedule Delivery
 - **AFTER the order is placed**, use `wm_specialist` to get the earliest available delivery slot
-- Request format: "Get the earliest available delivery slot for this order"
-- The WM Agent will query the warehouse delivery slots database
-- The WM Agent returns ONLY the single earliest available slot (not multiple options)
-- Extract postcode from customer address if available and pass it to WM Agent, if there is no postcode use the code SW1A
+- **CRITICAL**: Pass the `customer_id` to the WM Agent so it can look up the customer's postcode
+- Request format: "Get the earliest available delivery slot for customer [customer_id]"
 
 ### Step 7: Return Confirmation
 - Provide complete order confirmation with:
