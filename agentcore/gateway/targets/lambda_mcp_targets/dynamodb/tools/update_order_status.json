@@ -10,8 +10,7 @@
       },
       "new_status": {
         "type": "string",
-        "enum": ["PENDING", "CONFIRMED", "PROCESSING", "SHIPPED", "DELIVERED", "CANCELLED"],
-        "description": "The new status for the order"
+        "description": "The new status for the order. Must be one of: PENDING, CONFIRMED, PROCESSING, SHIPPED, DELIVERED, CANCELLED"
       }
     },
     "required": ["order_id", "new_status"]

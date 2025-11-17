@@ -25,6 +25,20 @@ def decimal_default(obj):
     raise TypeError
 
 
+def convert_floats_to_decimal(obj):
+    """
+    Recursively convert all float values to Decimal for DynamoDB compatibility
+    """
+    if isinstance(obj, list):
+        return [convert_floats_to_decimal(item) for item in obj]
+    elif isinstance(obj, dict):
+        return {key: convert_floats_to_decimal(value) for key, value in obj.items()}
+    elif isinstance(obj, float):
+        return Decimal(str(obj))
+    else:
+        return obj
+
+
 def place_order(customer_id, customer_name, items, total_amount, delivery_address=None):
     """
     Place a new order in the orders table.
@@ -50,13 +64,17 @@ def place_order(customer_id, customer_name, items, total_amount, delivery_addres
         timestamp = datetime.utcnow()
         order_id = f"ORD-{timestamp.strftime('%Y%m%d%H%M%S')}-{customer_id[:8]}"
 
+        # Convert all float values to Decimal for DynamoDB
+        items_decimal = convert_floats_to_decimal(items)
+        total_amount_decimal = Decimal(str(total_amount)) if isinstance(total_amount, (int, float)) else total_amount
+
         # Prepare order item
         order = {
             "order_id": order_id,
             "customer_id": customer_id,
             "customer_name": customer_name,
-            "items": items,
-            "total_amount": Decimal(str(total_amount)),
+            "items": items_decimal,
+            "total_amount": total_amount_decimal,
             "order_status": "PENDING",
             "created_at": timestamp.isoformat(),
             "updated_at": timestamp.isoformat(),
