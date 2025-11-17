@@ -82,7 +82,8 @@ def search_products_by_product_names(product_names):
             product_name,
             product_description,
             product_category,
-            product_price
+            product_price,
+            stock_level
         FROM product_catalog
         WHERE LOWER(product_name) LIKE ANY(%s)
         ORDER BY product_category, product_name;
@@ -106,6 +107,7 @@ def search_products_by_product_names(product_names):
                 "product_description": row[3],
                 "product_category": row[4],
                 "price": float(row[5]),
+                "stock_level": row[6],
             }
             formatted_results.append(product)
 
@@ -126,7 +128,11 @@ def list_product_catalogue():
         cursor = conn.cursor()
 
         cursor.execute(
-            "SELECT * FROM public.product_catalog ORDER BY product_category, product_name;"
+            """
+            SELECT product_id, product_name, product_description, product_category, product_price, stock_level
+            FROM public.product_catalog
+            ORDER BY product_category, product_name
+            """
         )
         results = cursor.fetchall()
 
@@ -140,10 +146,11 @@ def list_product_catalogue():
         formatted_results = []
         for row in results:
             product = {
-                "product_name": row[2],
-                "product_description": row[3],
-                "product_category": row[4],
-                "price": float(row[5]),
+                "product_name": row[1],
+                "product_description": row[2],
+                "product_category": row[3],
+                "price": float(row[4]),
+                "stock_level": row[5],
             }
             formatted_results.append(product)
 

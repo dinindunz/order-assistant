@@ -14,7 +14,10 @@ import boto3
 
 BASE_DIR = pathlib.Path(__file__).absolute().parent
 
-logger = logging.getLogger(__name__)
+# Use root logger to ensure logs appear in CloudWatch
+logger = logging.getLogger()
+if not logger.handlers:
+    logging.basicConfig(level=logging.INFO)
 
 # Global state
 bedrock_model = None
@@ -118,6 +121,7 @@ def load_mcp_tools(tool_filter=None):
         if mcp_tools is None:
             all_tools = get_full_tools_list(mcp_client)
             mcp_tools = all_tools
+            print(f"✓ Loaded {len(all_tools)} MCP tools: {[tool.tool_name for tool in all_tools]}")
             logger.info(
                 f"✓ Loaded {len(all_tools)} MCP tools: {[tool.tool_name for tool in all_tools]}"
             )
@@ -131,6 +135,7 @@ def load_mcp_tools(tool_filter=None):
                 for tool in all_tools
                 if any(tool.tool_name.startswith(prefix) for prefix in tool_filter)
             ]
+            print(f"✓ Filtered to {len(filtered_tools)} tools: {[tool.tool_name for tool in filtered_tools]}")
             logger.info(
                 f"✓ Filtered to {len(filtered_tools)} tools: {[tool.tool_name for tool in filtered_tools]}"
             )

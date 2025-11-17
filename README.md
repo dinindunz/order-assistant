@@ -12,6 +12,3 @@
 - cd agentcore/runtime && agentcore launch
 - cd scripts && ./invoke_populate_catalog.sh
 - cd scripts && ./test_agent.sh (local test path)
-
-## ClickOps
-- Deployed bedrock agentcore gateway vpc endpoint

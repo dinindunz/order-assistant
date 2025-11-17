@@ -110,10 +110,10 @@ class OrderAssistantStack(Stack):
             security_groups=[rds_security_group],
         )
 
-        # VPC Endpoint for Bedrock Agent Runtime
+        # VPC Endpoint for Bedrock AgentCore Gateway
         vpc.add_interface_endpoint(
-            "BedrockAgentRuntimeEndpoint",
-            service=ec2.InterfaceVpcEndpointAwsService.BEDROCK_AGENT_RUNTIME,
+            "BedrockAgentCoreGatewayEndpoint",
+            service=ec2.InterfaceVpcEndpointAwsService.BEDROCK_AGENTCORE_GATEWAY,
             subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PRIVATE_ISOLATED),
             security_groups=[rds_security_group],
         )
