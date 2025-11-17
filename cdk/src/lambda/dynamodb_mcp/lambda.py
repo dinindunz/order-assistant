@@ -216,16 +216,14 @@ def get_available_delivery_slots(start_date=None, end_date=None, postcode=None, 
         # Use the DateStatusIndex GSI if we're filtering by status
         if status_filter:
             # Query with GSI for efficient date + status filtering
+            # GSI has slot_status as partition key, slot_date as sort key
             response = table.query(
                 IndexName='DateStatusIndex',
-                KeyConditionExpression='#date BETWEEN :start_date AND :end_date AND slot_status = :status',
-                ExpressionAttributeNames={
-                    '#date': 'slot_date',
-                },
+                KeyConditionExpression='slot_status = :status AND slot_date BETWEEN :start_date AND :end_date',
                 ExpressionAttributeValues={
+                    ':status': status_filter,
                     ':start_date': start_date,
                     ':end_date': end_date,
-                    ':status': status_filter,
                 }
             )
         else:

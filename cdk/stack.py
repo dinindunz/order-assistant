@@ -165,14 +165,16 @@ class OrderAssistantStack(Stack):
             removal_policy=RemovalPolicy.DESTROY,  # For development - change to RETAIN for production
         )
 
-        # Add GSI for querying available slots by date
+        # Add GSI for querying available slots by date range
+        # Partition key: slot_status (to filter by status)
+        # Sort key: slot_date (to query date ranges with BETWEEN)
         delivery_slots_table.add_global_secondary_index(
             index_name="DateStatusIndex",
             partition_key=dynamodb.Attribute(
-                name="slot_date", type=dynamodb.AttributeType.STRING
+                name="slot_status", type=dynamodb.AttributeType.STRING
             ),
             sort_key=dynamodb.Attribute(
-                name="slot_status", type=dynamodb.AttributeType.STRING
+                name="slot_date", type=dynamodb.AttributeType.STRING
             ),
         )
 
