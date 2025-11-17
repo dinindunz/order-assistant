@@ -175,6 +175,47 @@ def update_order_status(order_id, new_status):
         raise
 
 
+def get_customer_postcode(customer_id):
+    """
+    Retrieve customer's postcode by customer_id.
+    Args:
+        customer_id (str): The customer ID (mobile number) to retrieve
+    Returns:
+        dict: Customer details with postcode
+    """
+    logger.info(f"Retrieving customer postcode: {customer_id}")
+
+    try:
+        table_name = os.environ.get("CUSTOMERS_TABLE_NAME")
+        if not table_name:
+            raise ValueError("CUSTOMERS_TABLE_NAME environment variable not set")
+
+        table = dynamodb.Table(table_name)
+
+        response = table.get_item(Key={"customer_id": customer_id})
+
+        if "Item" not in response:
+            logger.info(f"Customer not found: {customer_id}")
+            return {
+                "error": f"Customer {customer_id} not found",
+                "customer_id": customer_id,
+                "postcode": None
+            }
+
+        customer = response["Item"]
+        logger.info(f"Customer retrieved successfully: {customer_id}, postcode: {customer.get('postcode')}")
+
+        return {
+            "customer_id": customer_id,
+            "postcode": customer.get("postcode"),
+            "message": f"Customer {customer_id} has postcode {customer.get('postcode')}"
+        }
+
+    except Exception as e:
+        logger.error(f"Error retrieving customer: {str(e)}", exc_info=True)
+        raise
+
+
 def get_available_delivery_slots(start_date=None, end_date=None, postcode=None, status_filter=None, earliest_only=True):
     """
     Retrieve available delivery slots from the delivery slots table.
@@ -308,6 +349,7 @@ def handler(event, context):
     - place_order: {"customer_id": "...", "items": [...], "total_amount": 123.45}
     - get_order: {"order_id": "ORD-..."}
     - update_order_status: {"order_id": "ORD-...", "new_status": "CONFIRMED"}
+    - get_customer_postcode: {"customer_id": "..."}
     - get_available_delivery_slots: {"start_date": "YYYY-MM-DD", "end_date": "YYYY-MM-DD", "postcode": "SW1A", "status_filter": "available"}
     """
     logger.info("=== DynamoDB Custom Tools Lambda Handler Started ===")
@@ -326,6 +368,17 @@ def handler(event, context):
             earliest_only = event.get("earliest_only", True)  # Default to True
 
             result = get_available_delivery_slots(start_date, end_date, postcode, status_filter, earliest_only)
+
+        # Check for get_customer_postcode (customer_id only, no items)
+        elif "customer_id" in event and "items" not in event and "order_id" not in event:
+            # get_customer_postcode
+            logger.info("Tool: get_customer_postcode")
+            customer_id = event.get("customer_id")
+
+            if not customer_id:
+                raise ValueError("customer_id is required")
+
+            result = get_customer_postcode(customer_id)
 
         # Determine which tool based on event content
         elif "customer_id" in event and "items" in event:
@@ -369,7 +422,7 @@ def handler(event, context):
                 "body": json.dumps(
                     {
                         "error": "Invalid request format",
-                        "expected": "One of: place_order, get_order, update_order_status, get_available_delivery_slots",
+                        "expected": "One of: place_order, get_order, update_order_status, get_customer_postcode, get_available_delivery_slots",
                         "received_keys": list(event.keys()),
                     }
                 ),
