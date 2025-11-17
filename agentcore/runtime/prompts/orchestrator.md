@@ -45,7 +45,6 @@ When you receive input from the user:
   - **"Option 2"** → Apply the second option presented and place order
   - **"Yes"**, **"Confirm"**, **"Proceed"** → Place the previously proposed order
   - **"Modify"**, **"Change"** → Ask what they want to change
-- Remember the conversation history within the 5-minute session
 
 **B) Image Grocery List**
 - **If input contains `s3_bucket` and `s3_key`**: Call `image_processor_specialist(s3_bucket, s3_key)` to extract grocery list
@@ -73,16 +72,18 @@ When you receive input from the user:
 - The Order Agent will persist this to DynamoDB
 
 ### Step 6: Schedule Delivery
-- Use `wm_specialist` to get available delivery slots
-- Include the `order_id` returned by the Order Agent
+- **AFTER the order is placed**, use `wm_specialist` to get the earliest available delivery slot
+- **CRITICAL**: Pass the `customer_id` to the WM Agent so it can look up the customer's postcode
+- Request format: "Get the earliest available delivery slot for customer [customer_id]"
 
 ### Step 7: Return Confirmation
 - Provide complete order confirmation with:
-  - Order ID
+  - Order ID (from Order Agent)
   - Customer ID
-  - Items ordered
+  - Items ordered with quantities and prices
   - Total amount
-  - Delivery options
+  - Earliest delivery slot (single date/time from WM Agent)
+- The delivery slot is automatically the earliest available - no customer choice needed
 
 ## Order Specialist Input Format
 
@@ -178,3 +179,6 @@ Please place this order in the database.
 2. **Always pass customer_id to Order Agent** - Don't place orders without customer_id
 3. **Verify order was saved** - Check that Order Agent returns an order_id
 4. **Never make up customer_id** - Only use the customer_id provided in the payload
+5. **Get delivery slot AFTER placing the order** - Don't query delivery slots before the order is confirmed
+6. **Use WM Agent for delivery slot** - Call `wm_specialist` to get the earliest available slot from the warehouse
+7. **Present the single earliest slot** - WM Agent returns only one slot, not multiple options

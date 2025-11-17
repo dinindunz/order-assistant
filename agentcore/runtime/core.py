@@ -203,12 +203,14 @@ def initialize_agents():
         ]
     )
 
-    # Load DynamoDB tools for warehouse management
+    # Load DynamoDB tools for warehouse management and delivery slots
     wm_tools = load_mcp_tools(
         tool_filter=[
             "DynamoDBMCPTarget___scan_table",
             "DynamoDBMCPTarget___query_table",
             "DynamoDBMCPTarget___get_item",
+            "DynamoDBMCPTarget___get_customer_postcode",
+            "DynamoDBMCPTarget___get_available_delivery_slots",
         ]
     )
 
