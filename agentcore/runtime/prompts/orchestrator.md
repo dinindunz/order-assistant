@@ -73,16 +73,20 @@ When you receive input from the user:
 - The Order Agent will persist this to DynamoDB
 
 ### Step 6: Schedule Delivery
-- Use `wm_specialist` to get available delivery slots
-- Include the `order_id` returned by the Order Agent
+- **AFTER the order is placed**, use `wm_specialist` to get the earliest available delivery slot
+- Request format: "Get the earliest available delivery slot for this order"
+- The WM Agent will query the warehouse delivery slots database
+- The WM Agent returns ONLY the single earliest available slot (not multiple options)
+- Extract postcode from customer address if available and pass it to WM Agent, if there is no postcode use the code SW1A
 
 ### Step 7: Return Confirmation
 - Provide complete order confirmation with:
-  - Order ID
+  - Order ID (from Order Agent)
   - Customer ID
-  - Items ordered
+  - Items ordered with quantities and prices
   - Total amount
-  - Delivery options
+  - Earliest delivery slot (single date/time from WM Agent)
+- The delivery slot is automatically the earliest available - no customer choice needed
 
 ## Order Specialist Input Format
 
@@ -178,3 +182,6 @@ Please place this order in the database.
 2. **Always pass customer_id to Order Agent** - Don't place orders without customer_id
 3. **Verify order was saved** - Check that Order Agent returns an order_id
 4. **Never make up customer_id** - Only use the customer_id provided in the payload
+5. **Get delivery slot AFTER placing the order** - Don't query delivery slots before the order is confirmed
+6. **Use WM Agent for delivery slot** - Call `wm_specialist` to get the earliest available slot from the warehouse
+7. **Present the single earliest slot** - WM Agent returns only one slot, not multiple options

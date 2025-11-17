@@ -175,6 +175,134 @@ def update_order_status(order_id, new_status):
         raise
 
 
+def get_available_delivery_slots(start_date=None, end_date=None, postcode=None, status_filter=None, earliest_only=True):
+    """
+    Retrieve available delivery slots from the delivery slots table.
+
+    Args:
+        start_date (str, optional): Start date for the query (YYYY-MM-DD format)
+        end_date (str, optional): End date for the query (YYYY-MM-DD format)
+        postcode (str, optional): Postcode to filter slots by coverage area
+        status_filter (str, optional): Filter by slot status (available, fully_booked, blocked).
+                                       If None, returns all active slots.
+        earliest_only (bool, optional): If True, returns only the earliest available slot. Defaults to True.
+
+    Returns:
+        dict: Single earliest slot (if earliest_only=True) or list of available delivery slots
+    """
+    logger.info(f"Retrieving delivery slots - start_date: {start_date}, end_date: {end_date}, postcode: {postcode}, status: {status_filter}, earliest_only: {earliest_only}")
+
+    try:
+        table_name = os.environ.get("DELIVERY_SLOTS_TABLE_NAME")
+        if not table_name:
+            raise ValueError("DELIVERY_SLOTS_TABLE_NAME environment variable not set")
+
+        table = dynamodb.Table(table_name)
+
+        # If no date range specified, default to today and next 7 days
+        if not start_date:
+            start_date = datetime.utcnow().strftime('%Y-%m-%d')
+        if not end_date:
+            from datetime import timedelta
+            end_date_obj = datetime.strptime(start_date, '%Y-%m-%d') + timedelta(days=7)
+            end_date = end_date_obj.strftime('%Y-%m-%d')
+
+        logger.info(f"Querying slots from {start_date} to {end_date}")
+
+        # Query using GSI for date-based lookup
+        filter_expression = None
+        expression_values = {}
+
+        # Use the DateStatusIndex GSI if we're filtering by status
+        if status_filter:
+            # Query with GSI for efficient date + status filtering
+            response = table.query(
+                IndexName='DateStatusIndex',
+                KeyConditionExpression='#date BETWEEN :start_date AND :end_date AND slot_status = :status',
+                ExpressionAttributeNames={
+                    '#date': 'slot_date',
+                },
+                ExpressionAttributeValues={
+                    ':start_date': start_date,
+                    ':end_date': end_date,
+                    ':status': status_filter,
+                }
+            )
+        else:
+            # Scan with date filter if no status specified
+            from boto3.dynamodb.conditions import Attr, And
+
+            conditions = [
+                Attr('slot_date').between(start_date, end_date),
+                Attr('is_active').eq(True)
+            ]
+
+            filter_expression = And(*conditions)
+            response = table.scan(FilterExpression=filter_expression)
+
+        slots = response.get('Items', [])
+
+        # Filter by postcode if specified
+        if postcode:
+            filtered_slots = []
+            for slot in slots:
+                postcodes_covered = slot.get('postcode_coverage', '').split(',')
+                postcodes_covered = [pc.strip() for pc in postcodes_covered]
+                if postcode in postcodes_covered:
+                    filtered_slots.append(slot)
+            slots = filtered_slots
+
+        # Sort by date and start time
+        slots.sort(key=lambda x: (x.get('slot_date', ''), x.get('start_time', '')))
+
+        logger.info(f"Found {len(slots)} delivery slots")
+
+        # Convert Decimal to float for JSON serialization
+        slots_json = json.loads(json.dumps(slots, default=decimal_default))
+
+        # If earliest_only is True, return only the first slot
+        if earliest_only and len(slots_json) > 0:
+            earliest_slot = slots_json[0]
+            logger.info(f"Returning earliest slot only: {earliest_slot['slot_date']} {earliest_slot['start_time']}-{earliest_slot['end_time']}")
+            return {
+                "earliest_slot": earliest_slot,
+                "slot_date": earliest_slot['slot_date'],
+                "start_time": earliest_slot['start_time'],
+                "end_time": earliest_slot['end_time'],
+                "slot_id": earliest_slot['slot_id'],
+                "postcode_coverage": earliest_slot.get('postcode_coverage', ''),
+                "message": f"Earliest available delivery slot: {earliest_slot['slot_date']} from {earliest_slot['start_time']} to {earliest_slot['end_time']}"
+            }
+        elif earliest_only and len(slots_json) == 0:
+            logger.warning("No delivery slots available")
+            return {
+                "earliest_slot": None,
+                "message": "No delivery slots available for the specified criteria",
+                "query_params": {
+                    "start_date": start_date,
+                    "end_date": end_date,
+                    "postcode": postcode,
+                    "status_filter": status_filter,
+                }
+            }
+
+        # Otherwise return all slots
+        return {
+            "count": len(slots_json),
+            "query_params": {
+                "start_date": start_date,
+                "end_date": end_date,
+                "postcode": postcode,
+                "status_filter": status_filter,
+            },
+            "slots": slots_json,
+        }
+
+    except Exception as e:
+        logger.error(f"Error retrieving delivery slots: {str(e)}", exc_info=True)
+        raise
+
+
 def handler(event, context):
     """
     Lambda handler - Gateway sends tool parameters directly in event
@@ -182,14 +310,27 @@ def handler(event, context):
     - place_order: {"customer_id": "...", "items": [...], "total_amount": 123.45}
     - get_order: {"order_id": "ORD-..."}
     - update_order_status: {"order_id": "ORD-...", "new_status": "CONFIRMED"}
+    - get_available_delivery_slots: {"start_date": "YYYY-MM-DD", "end_date": "YYYY-MM-DD", "postcode": "SW1A", "status_filter": "available"}
     """
     logger.info("=== DynamoDB Custom Tools Lambda Handler Started ===")
     logger.info(f"Request ID: {context.aws_request_id}")
     logger.info(f"Event: {json.dumps(event, default=str)}")
 
     try:
+        # Check for get_available_delivery_slots first (uses optional params)
+        if "query_delivery_slots" in event or any(k in event for k in ["start_date", "end_date", "postcode", "status_filter", "earliest_only"]) and "order_id" not in event and "customer_id" not in event:
+            # get_available_delivery_slots
+            logger.info("Tool: get_available_delivery_slots")
+            start_date = event.get("start_date")
+            end_date = event.get("end_date")
+            postcode = event.get("postcode")
+            status_filter = event.get("status_filter")
+            earliest_only = event.get("earliest_only", True)  # Default to True
+
+            result = get_available_delivery_slots(start_date, end_date, postcode, status_filter, earliest_only)
+
         # Determine which tool based on event content
-        if "customer_id" in event and "items" in event:
+        elif "customer_id" in event and "items" in event:
             # place_order
             logger.info("Tool: place_order")
             customer_id = event.get("customer_id")
@@ -230,7 +371,7 @@ def handler(event, context):
                 "body": json.dumps(
                     {
                         "error": "Invalid request format",
-                        "expected": "One of: place_order, get_order, update_order_status",
+                        "expected": "One of: place_order, get_order, update_order_status, get_available_delivery_slots",
                         "received_keys": list(event.keys()),
                     }
                 ),
