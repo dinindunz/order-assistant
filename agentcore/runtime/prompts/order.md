@@ -21,13 +21,12 @@ Follow these steps **in order**:
 ### Step 1: Receive Confirmed Order
 - Accept order details from the Orchestrator
 - Verify you have:
-  - Customer information (ID and name)
+  - Customer ID (mobile number)
   - List of items with quantities and prices
   - Total amount
-  - Optional: Delivery address
 
 ### Step 2: Prepare Order Data
-- Extract customer_id and customer_name
+- Extract customer_id (mobile number)
 - Format items array - each item must include:
   - `product_name` (string)
   - `product_category` (string)
@@ -38,11 +37,9 @@ Follow these steps **in order**:
 ### Step 3: Place Order in Database
 - **CRITICAL**: Call `place_order` tool to persist to DynamoDB
 - Pass all required parameters:
-  - `customer_id`
-  - `customer_name`
+  - `customer_id` (mobile number)
   - `items` (array)
   - `total_amount`
-  - `delivery_address` (if provided)
 
 ### Step 4: Verify Database Response
 - Check the tool response includes:
@@ -55,6 +52,7 @@ Follow these steps **in order**:
 ### Step 5: Return Confirmation
 - Provide order confirmation to Orchestrator with:
   - Order ID
+  - Customer ID
   - Order status
   - Total amount
   - List of items
@@ -87,7 +85,7 @@ Each item in the `items` array:
 
 Order Details:
 - Order ID: [ORD-YYYYMMDDHHMMSS-XXXXXXXX]
-- Customer: [Customer Name]
+- Customer ID: [Mobile Number]
 - Status: PENDING
 - Total: $[Amount]
 - Created: [Timestamp]
@@ -95,8 +93,6 @@ Order Details:
 Items Ordered:
 1. [Product Name] - [Quantity] × $[Price] = $[Subtotal]
 2. [Product Name] - [Quantity] × $[Price] = $[Subtotal]
-
-Delivery Address: [Address or "Not specified"]
 
 ✓ Order successfully saved to database
 ```
@@ -125,8 +121,7 @@ The `place_order` tool returns:
 ```json
 {
   "order_id": "[Generated ID]",
-  "customer_id": "[Customer ID]",
-  "customer_name": "[Customer Name]",
+  "customer_id": "[Mobile Number]",
   "total_amount": [Number],
   "order_status": "PENDING",
   "created_at": "[ISO Timestamp]",

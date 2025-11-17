@@ -39,15 +39,13 @@ def convert_floats_to_decimal(obj):
         return obj
 
 
-def place_order(customer_id, customer_name, items, total_amount, delivery_address=None):
+def place_order(customer_id, items, total_amount):
     """
     Place a new order in the orders table.
     Args:
-        customer_id (str): Unique identifier for the customer
-        customer_name (str): Name of the customer
+        customer_id (str): Unique identifier for the customer (mobile number)
         items (list): List of order items with product details
         total_amount (float): Total order amount
-        delivery_address (str, optional): Delivery address
     Returns:
         dict: Order confirmation with order_id and details
     """
@@ -68,20 +66,16 @@ def place_order(customer_id, customer_name, items, total_amount, delivery_addres
         items_decimal = convert_floats_to_decimal(items)
         total_amount_decimal = Decimal(str(total_amount)) if isinstance(total_amount, (int, float)) else total_amount
 
-        # Prepare order item
+        # Prepare order item - only store customer_id, order_id, items, total, status, and timestamps
         order = {
             "order_id": order_id,
             "customer_id": customer_id,
-            "customer_name": customer_name,
             "items": items_decimal,
             "total_amount": total_amount_decimal,
             "order_status": "PENDING",
             "created_at": timestamp.isoformat(),
             "updated_at": timestamp.isoformat(),
         }
-
-        if delivery_address:
-            order["delivery_address"] = delivery_address
 
         # Put item in DynamoDB
         table.put_item(Item=order)
@@ -92,7 +86,6 @@ def place_order(customer_id, customer_name, items, total_amount, delivery_addres
         return {
             "order_id": order_id,
             "customer_id": customer_id,
-            "customer_name": customer_name,
             "total_amount": float(total_amount),
             "order_status": "PENDING",
             "created_at": timestamp.isoformat(),
@@ -186,7 +179,7 @@ def handler(event, context):
     """
     Lambda handler - Gateway sends tool parameters directly in event
     Event formats:
-    - place_order: {"customer_id": "...", "customer_name": "...", "items": [...], "total_amount": 123.45, "delivery_address": "..."}
+    - place_order: {"customer_id": "...", "items": [...], "total_amount": 123.45}
     - get_order: {"order_id": "ORD-..."}
     - update_order_status: {"order_id": "ORD-...", "new_status": "CONFIRMED"}
     """
@@ -200,24 +193,13 @@ def handler(event, context):
             # place_order
             logger.info("Tool: place_order")
             customer_id = event.get("customer_id")
-            customer_name = event.get("customer_name")
             items = event.get("items", [])
             total_amount = event.get("total_amount")
-            delivery_address = event.get("delivery_address")
 
-            if (
-                not customer_id
-                or not customer_name
-                or not items
-                or total_amount is None
-            ):
-                raise ValueError(
-                    "customer_id, customer_name, items, and total_amount are required"
-                )
+            if not customer_id or not items or total_amount is None:
+                raise ValueError("customer_id, items, and total_amount are required")
 
-            result = place_order(
-                customer_id, customer_name, items, total_amount, delivery_address
-            )
+            result = place_order(customer_id, items, total_amount)
 
         elif "order_id" in event and "new_status" in event:
             # update_order_status
