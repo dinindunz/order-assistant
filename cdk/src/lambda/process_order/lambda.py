@@ -58,8 +58,6 @@ def handler(event, _context):
             handle_image_message(customer_message)
         elif customer_message["type"] == "text":
             reply(customer_message)
-        elif customer_message["type"] == "interactive":
-            handle_button_response(customer_message)
         else:
             # Handle other message types
             logger.info(f"Unsupported message type: {customer_message['type']}")
@@ -103,21 +101,69 @@ def acknowledge(customer_message):
 
 def reply(customer_message):
     """Reply to text messages"""
-    default_message = "To implement more features, please visit https://aws.amazon.com/end-user-messaging/"
-    message_text = customer_message.get("message", "").lower()
+    message_text = customer_message.get("message", "").lower().strip()
     is_greeting = message_text.startswith(("hello", "hi", "hey", "hiya"))
 
     if is_greeting:
         react(customer_message)
         send_options(customer_message)
     else:
-        send_whatsapp_message(
-            {
-                "messaging_product": "whatsapp",
-                "to": f"+{customer_message['from']}",
-                "text": {"preview_url": False, "body": default_message},
+        # Handle text replies - send to agent for processing
+        try:
+            # Acknowledge the message
+            acknowledge(customer_message)
+
+            # Invoke AgentCore with the text message
+            agent_arn = get_agent_arn()
+            # Create session ID that groups invocations within 5-minute windows
+            current_time = time.time()
+            time_window = int(current_time // 300)  # 300 seconds = 5 minutes
+            session_id = f"whatsapp-session-{customer_message['from']}-{time_window}"
+
+            # Create payload with user's text message
+            payload = {
+                "action": "TEXT_MESSAGE",
+                "customer_id": customer_message["from"],
+                "message": customer_message.get("message", ""),
             }
-        )
+
+            logger.info(f"Invoking AgentCore with text message payload: {json.dumps(payload)}")
+
+            agent_response = agentcore.invoke_agent_runtime(
+                agentRuntimeArn=agent_arn,
+                runtimeSessionId=session_id,
+                payload=json.dumps(payload),
+                qualifier="DEFAULT",
+            )
+
+            response_body = agent_response["response"].read()
+            response_data = json.loads(response_body)
+            logger.info("Agent processing completed")
+
+            # Send agent response to user
+            send_whatsapp_message(
+                {
+                    "messaging_product": "whatsapp",
+                    "to": f"+{customer_message['from']}",
+                    "text": {
+                        "preview_url": False,
+                        "body": f"{response_data}",
+                    },
+                }
+            )
+
+        except Exception as error:
+            logger.error(f"Error handling text message: {error}", exc_info=True)
+            send_whatsapp_message(
+                {
+                    "messaging_product": "whatsapp",
+                    "to": f"+{customer_message['from']}",
+                    "text": {
+                        "preview_url": False,
+                        "body": "Sorry, there was an error processing your message. Please try again.",
+                    },
+                }
+            )
 
 
 def react(customer_message):
@@ -150,33 +196,14 @@ def send_options(customer_message):
         }
     )
 
-    # Send interactive buttons
+    # Send simple text reply instead of buttons
     send_whatsapp_message(
         {
             "messaging_product": "whatsapp",
             "to": f"+{customer_message['from']}",
-            "type": "interactive",
-            "interactive": {
-                "type": "button",
-                "body": {"text": "Please choose:"},
-                "action": {
-                    "buttons": [
-                        {
-                            "type": "reply",
-                            "reply": {
-                                "id": "OPTION_PLACE_ORDER",
-                                "title": "Place a new order",
-                            },
-                        },
-                        {
-                            "type": "reply",
-                            "reply": {
-                                "id": "OPTION_CHECK_STATUS",
-                                "title": "Check order status",
-                            },
-                        },
-                    ]
-                },
+            "text": {
+                "preview_url": False,
+                "body": "Welcome! You can:\n• Send an image of your grocery list to place an order\n• Send a text message to check your order status or ask questions",
             },
         }
     )
@@ -195,82 +222,6 @@ def send_whatsapp_message(meta_message):
     logger.debug("Send message complete")
 
 
-def handle_button_response(customer_message):
-    """Handle interactive button responses"""
-    button_id = customer_message.get("button_id")
-
-    if not button_id:
-        logger.warning("No button ID found in interactive message")
-        return
-
-    logger.info(
-        f"Processing button response: {button_id} ({customer_message.get('button_text')})"
-    )
-
-    # Acknowledge the button click
-    acknowledge(customer_message)
-
-    # Map button IDs to agent instructions
-    action_map = {
-        "OPTION_PLACE_ORDER": "The user has confirmed they want to place the order that was previously proposed. Please proceed with placing the order.",
-        "OPTION_MODIFY_ORDER": "The user wants to modify their order. Ask them what changes they would like to make to the grocery list.",
-        "OPTION_CANCEL": "The user has cancelled the order. Acknowledge the cancellation politely.",
-        "OPTION_CHECK_STATUS": "The user wants to check their order status. Retrieve their latest order information.",
-    }
-
-    instruction = action_map.get(button_id, f"Process user action: {button_id}")
-
-    try:
-        # Invoke AgentCore with the action instruction
-        agent_arn = get_agent_arn()
-        # Session ID must be at least 33 characters
-        session_id = f"whatsapp-session-customer-{customer_message['from']}"
-
-        payload = {
-            "action": button_id,
-            "instruction": instruction,
-            "customer_id": customer_message["from"],
-        }
-
-        logger.info(f"Invoking AgentCore with action payload: {json.dumps(payload)}")
-
-        agent_response = agentcore.invoke_agent_runtime(
-            agentRuntimeArn=agent_arn,
-            runtimeSessionId=session_id,
-            payload=json.dumps(payload),
-            qualifier="DEFAULT",
-        )
-
-        response_body = agent_response["response"].read()
-        response_data = json.loads(response_body)
-        logger.info("Agent processing completed")
-
-        # Send agent response to user
-        send_whatsapp_message(
-            {
-                "messaging_product": "whatsapp",
-                "to": f"+{customer_message['from']}",
-                "text": {
-                    "preview_url": False,
-                    "body": f"{response_data}",
-                },
-            }
-        )
-
-    except Exception as error:
-        logger.error(f"Error handling button response: {error}", exc_info=True)
-
-        # Notify user of error
-        send_whatsapp_message(
-            {
-                "messaging_product": "whatsapp",
-                "to": f"+{customer_message['from']}",
-                "text": {
-                    "preview_url": False,
-                    "body": "Sorry, there was an error processing your request. Please try again.",
-                },
-            }
-        )
 
 
 def handle_image_message(customer_message):
@@ -316,7 +267,10 @@ def handle_image_message(customer_message):
         # Invoke AgentCore to process the grocery list
         agent_arn = get_agent_arn()
         # Session ID must be at least 33 characters
-        session_id = f"whatsapp-session-customer-{customer_message['from']}"
+        # Create session ID that groups invocations within 5-minute windows
+        current_time = time.time()
+        time_window = int(current_time // 300)  # 300 seconds = 5 minutes
+        session_id = f"whatsapp-session-{customer_message['from']}-{time_window}"
 
         # Create structured payload with S3 details
         payload = {
@@ -339,7 +293,7 @@ def handle_image_message(customer_message):
         response_data = json.loads(response_body)
         logger.info("Agent processing completed")
 
-        # Send agent response to user (separate message for long responses)
+        # Send agent response to user
         send_whatsapp_message(
             {
                 "messaging_product": "whatsapp",
@@ -347,47 +301,6 @@ def handle_image_message(customer_message):
                 "text": {
                     "preview_url": False,
                     "body": f"{response_data}",
-                },
-            }
-        )
-
-        # Wait briefly to ensure message ordering
-        time.sleep(3)
-
-        # Send interactive buttons for next action (max 1024 chars for body)
-        send_whatsapp_message(
-            {
-                "messaging_product": "whatsapp",
-                "to": f"+{customer_message['from']}",
-                "type": "interactive",
-                "interactive": {
-                    "type": "button",
-                    "body": {"text": "What would you like to do next?"},
-                    "action": {
-                        "buttons": [
-                            {
-                                "type": "reply",
-                                "reply": {
-                                    "id": "OPTION_PLACE_ORDER",
-                                    "title": "Place this order",
-                                },
-                            },
-                            {
-                                "type": "reply",
-                                "reply": {
-                                    "id": "OPTION_MODIFY_ORDER",
-                                    "title": "Modify order",
-                                },
-                            },
-                            {
-                                "type": "reply",
-                                "reply": {
-                                    "id": "OPTION_CANCEL",
-                                    "title": "Cancel",
-                                },
-                            },
-                        ]
-                    },
                 },
             }
         )

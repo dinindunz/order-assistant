@@ -314,6 +314,8 @@ def process_grocery_list(payload: dict) -> str:
     Args:
         payload: Dictionary containing:
             - customer_id: Customer's mobile number
+            - action: Action type (PROCESS_IMAGE, TEXT_MESSAGE, etc.)
+            - message: User's text message (for TEXT_MESSAGE action)
             - grocery_list: List of items (optional if s3_bucket/s3_key provided)
             - s3_bucket: S3 bucket name (optional, for image processing)
             - s3_key: S3 object key (optional, for image processing)
@@ -322,8 +324,10 @@ def process_grocery_list(payload: dict) -> str:
     try:
         agent = get_orchestrator_agent()
 
-        # Build prompt with customer_id and either grocery list or S3 image details
+        # Build prompt with customer_id and action-specific content
         customer_id = payload.get("customer_id", "")
+        action = payload.get("action", "")
+        message = payload.get("message", "")
         grocery_list = payload.get("grocery_list", [])
         s3_bucket = payload.get("s3_bucket")
         s3_key = payload.get("s3_key")
@@ -335,7 +339,11 @@ def process_grocery_list(payload: dict) -> str:
         if customer_id:
             prompt_parts.append(f"Customer ID: {customer_id}")
 
-        if s3_bucket and s3_key:
+        # Handle different action types
+        if action == "TEXT_MESSAGE" and message:
+            prompt_parts.append(f"User Message: {message}")
+            prompt_parts.append("Please process this user input and continue with the order workflow.")
+        elif s3_bucket and s3_key:
             prompt_parts.append(f"S3 Bucket: {s3_bucket}")
             prompt_parts.append(f"S3 Key: {s3_key}")
             prompt_parts.append("Please extract the grocery list from the image and create an order proposal.")
@@ -349,6 +357,7 @@ def process_grocery_list(payload: dict) -> str:
         prompt = "\n\n".join(prompt_parts)
 
         logger.info(f"Sending prompt to orchestrator:\n{prompt}")
+        print(f"✓ Orchestrator prompt:\n{prompt}")
 
         response = agent(prompt)
         return str(response)
