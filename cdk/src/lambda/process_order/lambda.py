@@ -117,7 +117,7 @@ def reply(customer_message):
             agent_arn = get_agent_arn()
             # Create session ID that groups invocations within 10-minute windows
             current_time = time.time()
-            time_window = int(current_time // 150)  # 150 seconds = 10 minutes
+            time_window = int(current_time // 600)  # 600 seconds = 10 minutes
             session_id = f"whatsapp-session-{customer_message['from']}-{time_window}"
 
             # Create payload with user's text message
@@ -269,7 +269,7 @@ def handle_image_message(customer_message):
         # Session ID must be at least 33 characters
         # Create session ID that groups invocations within 10-minute windows
         current_time = time.time()
-        time_window = int(current_time // 150)  # 150 seconds = 10 minutes
+        time_window = int(current_time // 600)  # 600 seconds = 10 minutes
         session_id = f"whatsapp-session-{customer_message['from']}-{time_window}"
 
         # Create structured payload with S3 details

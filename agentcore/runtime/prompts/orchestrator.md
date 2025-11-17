@@ -45,7 +45,6 @@ When you receive input from the user:
   - **"Option 2"** → Apply the second option presented and place order
   - **"Yes"**, **"Confirm"**, **"Proceed"** → Place the previously proposed order
   - **"Modify"**, **"Change"** → Ask what they want to change
-- Remember the conversation history within the 5-minute session
 
 **B) Image Grocery List**
 - **If input contains `s3_bucket` and `s3_key`**: Call `image_processor_specialist(s3_bucket, s3_key)` to extract grocery list
