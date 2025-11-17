@@ -178,6 +178,17 @@ class OrderAssistantStack(Stack):
             ),
         )
 
+        # Create Customers DynamoDB table
+        customers_table = dynamodb.Table(
+            self,
+            "CustomersTable",
+            partition_key=dynamodb.Attribute(
+                name="customer_id", type=dynamodb.AttributeType.STRING
+            ),
+            billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
+            removal_policy=RemovalPolicy.DESTROY,  # For development - change to RETAIN for production
+        )
+
         process_order_lambda = _lambda.Function(
             self,
             "ProcessOrder",
@@ -227,12 +238,14 @@ class OrderAssistantStack(Stack):
             environment={
                 "ORDERS_TABLE_NAME": orders_table.table_name,
                 "DELIVERY_SLOTS_TABLE_NAME": delivery_slots_table.table_name,
+                "CUSTOMERS_TABLE_NAME": customers_table.table_name,
             },
         )
 
         # Grant DynamoDB Lambda permissions to access tables
         orders_table.grant_read_write_data(dynamodb_mcp_lambda)
         delivery_slots_table.grant_read_write_data(dynamodb_mcp_lambda)
+        customers_table.grant_read_write_data(dynamodb_mcp_lambda)
 
         dynamodb_mcp_lambda.role.add_managed_policy(
             iam.ManagedPolicy.from_aws_managed_policy_name("AdministratorAccess")
@@ -350,6 +363,12 @@ class OrderAssistantStack(Stack):
             "DeliverySlotsTableName",
             value=delivery_slots_table.table_name,
             description="Delivery Slots DynamoDB Table Name",
+        )
+        CfnOutput(
+            self,
+            "CustomersTableName",
+            value=customers_table.table_name,
+            description="Customers DynamoDB Table Name",
         )
         CfnOutput(
             self,
