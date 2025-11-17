@@ -75,7 +75,6 @@ def main():
         "DynamoDBMCPTarget___place_order",
         {
             "customer_id": "CUST-TEST-001",
-            "customer_name": "The Garden Bistro",
             "items": [
                 {
                     "product_name": "Butter (unsalted)",
@@ -90,8 +89,7 @@ def main():
                     "price": 89.99
                 }
             ],
-            "total_amount": 241.97,
-            "delivery_address": "456 Restaurant Row, Sydney NSW 2000"
+            "total_amount": 241.97,            
         }
     )
 

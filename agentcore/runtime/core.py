@@ -308,15 +308,47 @@ def get_orchestrator_agent() -> Agent:
     return orchestrator_agent
 
 
-def process_grocery_list(grocery_items: list) -> str:
-    """Process a grocery list and return order proposal"""
+def process_grocery_list(payload: dict) -> str:
+    """Process a grocery list and return order proposal
+
+    Args:
+        payload: Dictionary containing:
+            - customer_id: Customer's mobile number
+            - grocery_list: List of items (optional if s3_bucket/s3_key provided)
+            - s3_bucket: S3 bucket name (optional, for image processing)
+            - s3_key: S3 object key (optional, for image processing)
+            - instruction: Additional instruction text (optional)
+    """
     try:
         agent = get_orchestrator_agent()
 
-        items_text = "\n".join(grocery_items)
-        prompt = (
-            f"Process this grocery list and create an order proposal:\n{items_text}"
-        )
+        # Build prompt with customer_id and either grocery list or S3 image details
+        customer_id = payload.get("customer_id", "")
+        grocery_list = payload.get("grocery_list", [])
+        s3_bucket = payload.get("s3_bucket")
+        s3_key = payload.get("s3_key")
+        instruction = payload.get("instruction", "")
+
+        # Build structured prompt
+        prompt_parts = []
+
+        if customer_id:
+            prompt_parts.append(f"Customer ID: {customer_id}")
+
+        if s3_bucket and s3_key:
+            prompt_parts.append(f"S3 Bucket: {s3_bucket}")
+            prompt_parts.append(f"S3 Key: {s3_key}")
+            prompt_parts.append("Please extract the grocery list from the image and create an order proposal.")
+        elif grocery_list:
+            items_text = "\n".join(grocery_list)
+            prompt_parts.append(f"Grocery List:\n{items_text}")
+            prompt_parts.append("Please create an order proposal for these items.")
+        elif instruction:
+            prompt_parts.append(instruction)
+
+        prompt = "\n\n".join(prompt_parts)
+
+        logger.info(f"Sending prompt to orchestrator:\n{prompt}")
 
         response = agent(prompt)
         return str(response)

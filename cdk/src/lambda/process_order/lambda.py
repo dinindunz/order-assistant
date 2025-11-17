@@ -318,13 +318,12 @@ def handle_image_message(customer_message):
         # Session ID must be at least 33 characters
         session_id = f"whatsapp-session-customer-{customer_message['from']}"
 
-        # Create instruction for image processing
-        instruction = f"Extract grocery list from S3 bucket '{MEDIA_BUCKET_NAME}' key '{actual_s3_key}'"
-
+        # Create structured payload with S3 details
         payload = {
             "action": "PROCESS_IMAGE",
-            "instruction": instruction,
             "customer_id": customer_message["from"],
+            "s3_bucket": MEDIA_BUCKET_NAME,
+            "s3_key": actual_s3_key,
         }
 
         logger.info(f"Invoking AgentCore with payload: {json.dumps(payload)}")
