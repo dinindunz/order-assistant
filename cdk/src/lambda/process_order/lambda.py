@@ -53,11 +53,17 @@ def handler(event, _context):
         # Acknowledge the message
         acknowledge(customer_message)
 
+        # Create session ID once in handler - groups invocations within 30-minute windows
+        current_time = time.time()
+        time_window = int(current_time // 1800)  # 1800 seconds = 30 minutes
+        session_id = f"whatsapp-session-{customer_message['from']}-{time_window}"
+        logger.info(f"Session ID: {session_id}")
+
         # Handle different message types
         if customer_message["type"] == "image":
-            handle_image_message(customer_message)
+            handle_image_message(customer_message, session_id)
         elif customer_message["type"] == "text":
-            reply(customer_message)
+            reply(customer_message, session_id)
         else:
             # Handle other message types
             logger.info(f"Unsupported message type: {customer_message['type']}")
@@ -99,8 +105,13 @@ def acknowledge(customer_message):
     )
 
 
-def reply(customer_message):
-    """Reply to text messages"""
+def reply(customer_message, session_id):
+    """Reply to text messages
+
+    Args:
+        customer_message: Message details from WhatsApp
+        session_id: Session ID created in the handler
+    """
     message_text = customer_message.get("message", "").lower().strip()
     is_greeting = message_text.startswith(("hello", "hi", "hey", "hiya"))
 
@@ -115,10 +126,6 @@ def reply(customer_message):
 
             # Invoke AgentCore with the text message
             agent_arn = get_agent_arn()
-            # Create session ID that groups invocations within 10-minute windows
-            current_time = time.time()
-            time_window = int(current_time // 600)  # 600 seconds = 10 minutes
-            session_id = f"whatsapp-session-{customer_message['from']}-{time_window}"
 
             # Create payload with user's text message
             payload = {
@@ -128,6 +135,7 @@ def reply(customer_message):
             }
 
             logger.info(f"Invoking AgentCore with text message payload: {json.dumps(payload)}")
+            logger.info(f"Using session ID: {session_id}")
 
             agent_response = agentcore.invoke_agent_runtime(
                 agentRuntimeArn=agent_arn,
@@ -224,8 +232,13 @@ def send_whatsapp_message(meta_message):
 
 
 
-def handle_image_message(customer_message):
-    """Handle image messages"""
+def handle_image_message(customer_message, session_id):
+    """Handle image messages
+
+    Args:
+        customer_message: Message details from WhatsApp
+        session_id: Session ID created in the handler
+    """
     if not customer_message.get("image") or not customer_message["image"].get("id"):
         logger.warning("No image data found in message")
         return
@@ -266,11 +279,6 @@ def handle_image_message(customer_message):
 
         # Invoke AgentCore to process the grocery list
         agent_arn = get_agent_arn()
-        # Session ID must be at least 33 characters
-        # Create session ID that groups invocations within 10-minute windows
-        current_time = time.time()
-        time_window = int(current_time // 600)  # 600 seconds = 10 minutes
-        session_id = f"whatsapp-session-{customer_message['from']}-{time_window}"
 
         # Create structured payload with S3 details
         payload = {
@@ -281,6 +289,7 @@ def handle_image_message(customer_message):
         }
 
         logger.info(f"Invoking AgentCore with payload: {json.dumps(payload)}")
+        logger.info(f"Using session ID: {session_id}")
 
         agent_response = agentcore.invoke_agent_runtime(
             agentRuntimeArn=agent_arn,
