@@ -1,7 +1,7 @@
 import os
 import logging
 import atexit
-from strands import Agent, tool
+from strands import Agent
 from strands.models import BedrockModel
 from strands.tools.mcp.mcp_client import MCPClient
 from strands_tools import image_reader
@@ -12,6 +12,7 @@ import json
 import pathlib
 import boto3
 from strands.multiagent import GraphBuilder
+import yaml
 
 BASE_DIR = pathlib.Path(__file__).absolute().parent
 
@@ -19,6 +20,30 @@ BASE_DIR = pathlib.Path(__file__).absolute().parent
 logger = logging.getLogger()
 if not logger.handlers:
     logging.basicConfig(level=logging.INFO)
+
+# Load model configuration
+MODEL_CONFIG = None
+
+
+def load_model_config() -> Dict[str, Any]:
+    """Load model configuration from YAML file"""
+    global MODEL_CONFIG
+
+    if MODEL_CONFIG is not None:
+        return MODEL_CONFIG
+
+    config_path = BASE_DIR / "model_config.yaml"
+    try:
+        with open(config_path, "r") as f:
+            MODEL_CONFIG = yaml.safe_load(f)
+        logger.info(f"Loaded model configuration from {config_path}")
+        return MODEL_CONFIG
+    except FileNotFoundError:
+        logger.error(f"Model config file not found at {config_path}")
+        raise
+    except Exception as e:
+        logger.error(f"Error loading model config: {e}")
+        raise
 
 # Global state
 bedrock_model = None
@@ -158,34 +183,54 @@ def load_mcp_tools(tool_filter=None):
         return []
 
 
-def create_bedrock_model() -> BedrockModel:
-    """Create a BedrockModel for the agents"""
-    region = os.environ.get("AWS_REGION", "ap-southeast-2")
-    model_id = os.environ.get(
-        "BEDROCK_MODEL_ID", "apac.anthropic.claude-sonnet-4-20250514-v1:0"
-    )
+def create_bedrock_model(agent_name: str) -> BedrockModel:
+    """Create a BedrockModel for a specific agent
+
+    Args:
+        agent_name: Name of the agent (e.g., 'orchestrator', 'catalog', 'order', 'warehouse', 'image_processor')
+    """
+    config = load_model_config()
+
+    # Get agent-specific config
+    if agent_name not in config.get("agents", {}):
+        raise ValueError(f"No configuration found for agent '{agent_name}' in model_config.yaml")
+
+    agent_config = config["agents"][agent_name]
+
+    # Read directly from config
+    region = agent_config.get("region")
+    model_id = agent_config.get("model_id")
+    temperature = agent_config.get("temperature")
+    max_tokens = agent_config.get("max_tokens")
+
+    # Validate required fields
+    if not model_id:
+        raise ValueError(f"model_id not configured for agent '{agent_name}'")
+    if not region:
+        raise ValueError(f"region not configured for agent '{agent_name}'")
+    if temperature is None:
+        raise ValueError(f"temperature not configured for agent '{agent_name}'")
+    if max_tokens is None:
+        raise ValueError(f"max_tokens not configured for agent '{agent_name}'")
 
     try:
-        logger.info(f"Creating Bedrock model: {model_id}")
+        logger.info(f"Creating Bedrock model for {agent_name}: {model_id} (temp={temperature}, max_tokens={max_tokens})")
         model = BedrockModel(
             model_id=model_id,
             region_name=region,
-            temperature=0.1,
-            max_tokens=4000,
+            temperature=temperature,
+            max_tokens=max_tokens,
         )
-        logger.info(f"Successfully created Bedrock model")
+        logger.info(f"Successfully created Bedrock model for {agent_name}")
         return model
     except Exception as e:
-        logger.error(f"Failed to create model: {e}")
+        logger.error(f"Failed to create model for {agent_name}: {e}")
         raise
 
 
 def initialize_agents():
-    """Initialize the specialized agents"""
+    """Initialize the specialized agents with individual model configurations"""
     global catalog_agent, order_agent, wm_agent, image_processor_agent, bedrock_model
-
-    if bedrock_model is None:
-        bedrock_model = create_bedrock_model()
 
     # Load custom PostgreSQL tools for product catalog
     postgres_tools = load_mcp_tools(
@@ -221,48 +266,54 @@ def initialize_agents():
     sys.path.insert(0, str(BASE_DIR / "tools"))
     from s3_tools import download_image_from_s3
 
+    # Create agent-specific models
+    catalog_model = create_bedrock_model("catalog")
+    order_model = create_bedrock_model("order")
+    wm_model = create_bedrock_model("warehouse")
+    image_processor_model = create_bedrock_model("image_processor")
+
     # Catalog Agent - searches product catalog with PostgreSQL access
     catalog_agent = Agent(
         system_prompt=(BASE_DIR / "prompts/catalog.md").read_text(),
         tools=postgres_tools,
-        model=bedrock_model,
+        model=catalog_model,
     )
 
     # Order Agent - handles order placement with custom DynamoDB tools
     order_agent = Agent(
         system_prompt=(BASE_DIR / "prompts/order.md").read_text(),
         tools=order_tools,
-        model=bedrock_model,
+        model=order_model,
     )
 
     # WM Agent - handles warehouse management and delivery scheduling with DynamoDB access
     wm_agent = Agent(
         system_prompt=(BASE_DIR / "prompts/wm.md").read_text(),
         tools=wm_tools,
-        model=bedrock_model,
+        model=wm_model,
     )
 
     # Image Processor Agent - extracts grocery lists from images using S3 + image_reader
     image_processor_agent = Agent(
         system_prompt=(BASE_DIR / "prompts/image_processor.md").read_text(),
         tools=[download_image_from_s3, image_reader],
-        model=bedrock_model,
+        model=image_processor_model,
     )
 
 
 def get_orchestrator_agent() -> Agent:
     """Get or create the orchestrator agent for the graph entry point"""
-    global orchestrator_agent, bedrock_model
+    global orchestrator_agent
 
     if orchestrator_agent is None:
-        if bedrock_model is None:
-            bedrock_model = create_bedrock_model()
-
         initialize_agents()
+
+        # Create orchestrator-specific model
+        orchestrator_model = create_bedrock_model("orchestrator")
 
         orchestrator_agent = Agent(
             system_prompt=(BASE_DIR / "prompts/orchestrator.md").read_text(),
-            model=bedrock_model,
+            model=orchestrator_model,
         )
 
     return orchestrator_agent
