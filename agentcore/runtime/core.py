@@ -364,8 +364,30 @@ def build_order_processing_graph():
     print(f"Adding edges for Path 1 (Image flow)...")
     def is_image_request(result):
         """Check if this is an image processing request"""
-        result_str = str(result).lower()
-        return "route_to_image" in result_str
+        # Extract just the router's latest output from GraphState.results
+        router_output = ""
+
+        if hasattr(result, 'results') and 'router' in result.results:
+            router_result = result.results['router']
+            if hasattr(router_result, 'result'):
+                agent_result = router_result.result
+                if hasattr(agent_result, 'message'):
+                    message = agent_result.message
+                    # Message is a dict with structure: {'role': 'assistant', 'content': [{'text': '...'}]}
+                    if isinstance(message, dict) and 'content' in message and len(message['content']) > 0:
+                        router_output = str(message['content'][0].get('text', ''))
+
+        # Fallback to string conversion if extraction failed
+        if not router_output:
+            router_output = str(result)
+
+        result_str = router_output.lower()
+        is_image = "route_to_image" in result_str
+
+        print(f"🔍 is_image_request: {is_image}")
+        logger.info(f"is_image_request: {is_image}")
+
+        return is_image
 
     builder.add_edge("router", "image_processor", condition=is_image_request)
     builder.add_edge("image_processor", "catalog")
@@ -376,9 +398,38 @@ def build_order_processing_graph():
     print(f"Adding edges for Path 2 (Confirmation flow)...")
     def is_order_request(result):
         """Check if this is a user confirmation for order placement"""
-        result_str = str(result).lower()
+        # Extract just the router's latest output from GraphState.results
+        router_output = ""
+
+        # Extract just the router's latest output from GraphState.results
+        if hasattr(result, 'results') and 'router' in result.results:
+            router_result = result.results['router']
+            if hasattr(router_result, 'result'):
+                agent_result = router_result.result
+                if hasattr(agent_result, 'message'):
+                    message = agent_result.message
+                    # Message is a dict with structure: {'role': 'assistant', 'content': [{'text': '...'}]}
+                    if isinstance(message, dict) and 'content' in message and len(message['content']) > 0:
+                        router_output = str(message['content'][0].get('text', ''))
+
+        # Fallback to string conversion if extraction failed
+        if not router_output:
+            router_output = str(result)
+
+        result_str = router_output.lower()
+
         # Router outputs order details with "Selected Option" and "Items to Order"
-        return ("selected option" in result_str and "items to order" in result_str) or "total amount" in result_str
+        # Must NOT contain "route_to_image" to avoid confusion with Path 1
+        has_order_keywords = "selected option" in result_str and "items to order" in result_str
+        has_total_and_customer = "total amount" in result_str and "customer id" in result_str
+        is_not_image_route = "route_to_image" not in result_str
+
+        is_order = (has_order_keywords or has_total_and_customer) and is_not_image_route
+
+        print(f"🔍 is_order_request: {is_order} (order_kw={has_order_keywords}, total_cust={has_total_and_customer}, not_img={is_not_image_route})")
+        logger.info(f"is_order_request: {is_order}, has_order_keywords: {has_order_keywords}, has_total_and_customer: {has_total_and_customer}, is_not_image_route: {is_not_image_route}")
+
+        return is_order
 
     builder.add_edge("router", "order", condition=is_order_request)
     builder.add_edge("order", "warehouse")
@@ -448,12 +499,15 @@ def process_grocery_list(payload: dict) -> str:
         prompt = "\n\n".join(prompt_parts)
 
         logger.info(f"Executing graph with prompt:\n{prompt}")
-        print(f"✓ Graph execution starting with:\n{prompt}")
+        print(f"✓ Graph execution starting")
 
         # Execute the graph
         result = graph(prompt)
 
-        # Return the final result (from warehouse node)
+        print(f"✓ Graph execution completed")
+        logger.info(f"Graph execution completed")
+
+        # Return the final result
         return str(result)
 
     except Exception as e:
