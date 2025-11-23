@@ -11,6 +11,7 @@ from typing import Dict, Any
 import json
 import pathlib
 import boto3
+from strands.multiagent import GraphBuilder
 
 BASE_DIR = pathlib.Path(__file__).absolute().parent
 
@@ -249,45 +250,8 @@ def initialize_agents():
     )
 
 
-@tool
-def catalog_specialist(query: str) -> str:
-    """Search product catalog and suggest items"""
-    if catalog_agent is None:
-        initialize_agents()
-    response = catalog_agent(query)
-    return str(response)
-
-
-@tool
-def order_specialist(order_details: str) -> str:
-    """Place order and send confirmation"""
-    if order_agent is None:
-        initialize_agents()
-    response = order_agent(order_details)
-    return str(response)
-
-
-@tool
-def wm_specialist(delivery_request: str) -> str:
-    """Get available delivery slots from warehouse"""
-    if wm_agent is None:
-        initialize_agents()
-    response = wm_agent(delivery_request)
-    return str(response)
-
-
-@tool
-def image_processor_specialist(s3_bucket: str, s3_key: str) -> str:
-    """Extract grocery list from image in S3"""
-    if image_processor_agent is None:
-        initialize_agents()
-    prompt = f"Extract the grocery list from the image at s3://{s3_bucket}/{s3_key}"
-    response = image_processor_agent(prompt)
-    return str(response)
-
-
 def get_orchestrator_agent() -> Agent:
-    """Get or create the orchestrator agent"""
+    """Get or create the orchestrator agent for the graph entry point"""
     global orchestrator_agent, bedrock_model
 
     if orchestrator_agent is None:
@@ -298,20 +262,72 @@ def get_orchestrator_agent() -> Agent:
 
         orchestrator_agent = Agent(
             system_prompt=(BASE_DIR / "prompts/orchestrator.md").read_text(),
-            tools=[
-                catalog_specialist,
-                order_specialist,
-                wm_specialist,
-                image_processor_specialist,
-            ],
             model=bedrock_model,
         )
 
     return orchestrator_agent
 
 
+def build_order_processing_graph():
+    """Build the graph-based multi-agent system for order processing"""
+    global catalog_agent, order_agent, wm_agent, image_processor_agent
+
+    # Initialize agents first
+    if catalog_agent is None:
+        initialize_agents()
+
+    # Get orchestrator agent
+    orchestrator = get_orchestrator_agent()
+
+    # Create graph builder
+    builder = GraphBuilder()
+
+    # Add all nodes first
+    builder.add_node("orchestrator", orchestrator)
+
+    builder.add_node("image_processor", image_processor_agent)
+    builder.add_node("catalog", catalog_agent)
+    builder.add_node("order", order_agent)
+    builder.add_node("warehouse", wm_agent)
+
+    # Set entry point after all nodes are added
+    builder.set_entry_point("orchestrator")
+
+    # Define edges with conditional routing
+    # Orchestrator routes to image processor if S3 image present
+    def should_process_image(result):
+        """Check if we need to process an image"""
+        result_str = str(result).lower()
+        return "s3_bucket" in result_str or "image" in result_str
+
+    builder.add_edge("orchestrator", "image_processor", condition=should_process_image)
+
+    # Orchestrator routes to catalog for product search (default path)
+    def should_search_catalog(result):
+        """Check if we should search catalog"""
+        result_str = str(result).lower()
+        return "catalog" in result_str or "search" in result_str or "product" in result_str
+
+    builder.add_edge("orchestrator", "catalog", condition=should_search_catalog)
+
+    # Image processor flows to catalog
+    builder.add_edge("image_processor", "catalog")
+
+    # Catalog flows to order placement
+    builder.add_edge("catalog", "order")
+
+    # Order flows to warehouse for delivery slot
+    builder.add_edge("order", "warehouse")
+
+    # Set execution limits
+    builder.max_node_executions(10)
+    builder.execution_timeout(300)  # 5 minutes
+
+    return builder.build()
+
+
 def process_grocery_list(payload: dict) -> str:
-    """Process a grocery list and return order proposal
+    """Process a grocery list using graph-based multi-agent system
 
     Args:
         payload: Dictionary containing:
@@ -324,7 +340,8 @@ def process_grocery_list(payload: dict) -> str:
             - instruction: Additional instruction text (optional)
     """
     try:
-        agent = get_orchestrator_agent()
+        # Build the graph
+        graph = build_order_processing_graph()
 
         # Build prompt with customer_id and action-specific content
         customer_id = payload.get("customer_id", "")
@@ -344,28 +361,33 @@ def process_grocery_list(payload: dict) -> str:
         # Handle different action types
         if action == "TEXT_MESSAGE" and message:
             prompt_parts.append(f"User Message: {message}")
-            prompt_parts.append("Please process this user input and continue with the order workflow.")
+            prompt_parts.append("Route this to the appropriate agent based on the user's intent.")
         elif s3_bucket and s3_key:
             prompt_parts.append(f"S3 Bucket: {s3_bucket}")
             prompt_parts.append(f"S3 Key: {s3_key}")
-            prompt_parts.append("Please extract the grocery list from the image and create an order proposal.")
+            prompt_parts.append("Route to image processor to extract grocery list, then continue to catalog search.")
         elif grocery_list:
             items_text = "\n".join(grocery_list)
             prompt_parts.append(f"Grocery List:\n{items_text}")
-            prompt_parts.append("Please create an order proposal for these items.")
+            prompt_parts.append("Route to catalog to search for these products.")
         elif instruction:
             prompt_parts.append(instruction)
 
         prompt = "\n\n".join(prompt_parts)
 
-        logger.info(f"Sending prompt to orchestrator:\n{prompt}")
-        print(f"✓ Orchestrator prompt:\n{prompt}")
+        logger.info(f"Executing graph with prompt:\n{prompt}")
+        print(f"✓ Graph execution starting with:\n{prompt}")
 
-        response = agent(prompt)
-        return str(response)
+        # Execute the graph
+        result = graph(prompt)
+
+        # Return the final result (from warehouse node)
+        return str(result)
 
     except Exception as e:
         logger.error(f"Error processing grocery list: {e}")
+        import traceback
+        traceback.print_exc()
         return f"Error: {str(e)}"
 
 
