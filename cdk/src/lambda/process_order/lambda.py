@@ -16,9 +16,13 @@ s3 = boto3.client("s3", region_name="ap-southeast-2")
 PHONE_NUMBER_ID = os.environ.get("PHONE_NUMBER_ID")
 MEDIA_BUCKET_NAME = os.environ.get("MEDIA_BUCKET_NAME")
 AGENT_ARN_PARAM = os.environ.get("AGENT_ARN_PARAM")
+PENDING_ORDERS_TABLE = os.environ.get("PENDING_ORDERS_TABLE")
 
 # Cached values
 AGENT_ARN = None
+
+# DynamoDB client for pending orders
+dynamodb_client = boto3.client("dynamodb", region_name="ap-southeast-2")
 
 
 def get_agent_arn():
@@ -29,6 +33,53 @@ def get_agent_arn():
         AGENT_ARN = response["Parameter"]["Value"]
         logger.info(f"Retrieved agent ARN from SSM: {AGENT_ARN}")
     return AGENT_ARN
+
+
+def store_catalog_options(customer_id, catalog_message):
+    """Store catalog options in DynamoDB for later retrieval"""
+    try:
+        ttl = int(time.time()) + 1800  # 30 minutes TTL
+        dynamodb_client.put_item(
+            TableName=PENDING_ORDERS_TABLE,
+            Item={
+                "customer_id": {"S": customer_id},
+                "catalog_options": {"S": catalog_message},
+                "created_at": {"N": str(int(time.time()))},
+                "ttl": {"N": str(ttl)},
+            },
+        )
+        logger.info(f"Stored catalog options for customer {customer_id}")
+    except Exception as e:
+        logger.error(f"Error storing catalog options: {e}", exc_info=True)
+
+
+def get_catalog_options(customer_id):
+    """Retrieve catalog options from DynamoDB"""
+    try:
+        response = dynamodb_client.get_item(
+            TableName=PENDING_ORDERS_TABLE, Key={"customer_id": {"S": customer_id}}
+        )
+        if "Item" in response:
+            catalog_message = response["Item"]["catalog_options"]["S"]
+            logger.info(f"Retrieved catalog options for customer {customer_id}")
+            return catalog_message
+        else:
+            logger.info(f"No catalog options found for customer {customer_id}")
+            return None
+    except Exception as e:
+        logger.error(f"Error retrieving catalog options: {e}", exc_info=True)
+        return None
+
+
+def delete_catalog_options(customer_id):
+    """Delete catalog options from DynamoDB after order is placed"""
+    try:
+        dynamodb_client.delete_item(
+            TableName=PENDING_ORDERS_TABLE, Key={"customer_id": {"S": customer_id}}
+        )
+        logger.info(f"Deleted catalog options for customer {customer_id}")
+    except Exception as e:
+        logger.error(f"Error deleting catalog options: {e}", exc_info=True)
 
 
 def handler(event, _context):
@@ -55,7 +106,7 @@ def handler(event, _context):
 
         # Create session ID once in handler - groups invocations within 30-minute windows
         current_time = time.time()
-        time_window = int(current_time // 300)  # 1800 seconds = 30 minutes
+        time_window = int(current_time // 600)  # 1800 seconds = 30 minutes
         session_id = f"whatsapp-session-{customer_message['from']}-{time_window}"
         logger.info(f"Session ID: {session_id}")
 
@@ -127,12 +178,20 @@ def reply(customer_message, session_id):
             # Invoke AgentCore with the text message
             agent_arn = get_agent_arn()
 
-            # Create payload with user's text message
+            # Retrieve catalog options from DynamoDB if available
+            catalog_options = get_catalog_options(customer_message["from"])
+
+            # Create payload with user's text message and catalog options
             payload = {
                 "action": "TEXT_MESSAGE",
                 "customer_id": customer_message["from"],
                 "message": customer_message.get("message", ""),
             }
+
+            # Include catalog options in payload if available
+            if catalog_options:
+                payload["catalog_options"] = catalog_options
+                logger.info("Including catalog options in payload for router agent")
 
             logger.info(f"Invoking AgentCore with text message payload: {json.dumps(payload)}")
             logger.info(f"Using session ID: {session_id}")
@@ -144,9 +203,49 @@ def reply(customer_message, session_id):
                 qualifier="DEFAULT",
             )
 
+            # Read and parse response
             response_body = agent_response["response"].read()
+            logger.info(f"Raw response body type: {type(response_body)}")
+
             response_data = json.loads(response_body)
+            logger.info(f"Response data type: {type(response_data)}")
+
+            # Extract message from GraphResult
+            # The response is a JSON-encoded string containing the string representation of a GraphResult object
+            message_text = None
+
+            if isinstance(response_data, str):
+                # Parse the string representation to extract text from node results
+                import re
+
+                # Try to extract from warehouse node first (Path 2), then catalog, then order
+                for node_name in ["warehouse", "catalog", "order"]:
+                    # Pattern to match: 'node_name': NodeResult(result=AgentResult(...message={'role': 'assistant', 'content': [{'text': 'CONTENT'}]}
+                    # Use non-greedy .*? to match until we find the message field
+                    pattern = rf"'{node_name}':\s*NodeResult\(result=AgentResult\(.*?message=\{{'role':\s*'assistant',\s*'content':\s*\[\{{'text':\s*'(.*?)'\}}\]"
+
+                    match = re.search(pattern, response_data)
+                    if match:
+                        # Extract the text and unescape it
+                        extracted_text = match.group(1)
+                        # Unescape the text: replace \n with actual newlines, \' with ', etc.
+                        message_text = extracted_text.replace('\\n', '\n').replace("\\'", "'").replace('\\"', '"')
+                        logger.info(f"Extracted message from {node_name} node using regex")
+                        break
+
+            if not message_text:
+                # Fallback to string representation
+                message_text = str(response_data)
+                logger.warning("Could not extract message from GraphResult, using string representation")
+
+            logger.info(f"Final message length: {len(message_text)} chars")
+            logger.info(f"Message preview: {message_text[:200]}...")
             logger.info("Agent processing completed")
+
+            # Delete catalog options after successful order (Path 2 - warehouse confirmation)
+            if "order confirmed" in message_text.lower() or "order id:" in message_text.lower():
+                logger.info("Detected order confirmation - deleting catalog options")
+                delete_catalog_options(customer_message["from"])
 
             # Send agent response to user
             send_whatsapp_message(
@@ -155,7 +254,7 @@ def reply(customer_message, session_id):
                     "to": f"+{customer_message['from']}",
                     "text": {
                         "preview_url": False,
-                        "body": f"{response_data}",
+                        "body": message_text,
                     },
                 }
             )
@@ -297,10 +396,49 @@ def handle_image_message(customer_message, session_id):
             payload=json.dumps(payload),
             qualifier="DEFAULT",
         )
-
+        # Read and parse response
         response_body = agent_response["response"].read()
+        logger.info(f"Raw response body type: {type(response_body)}")
+
         response_data = json.loads(response_body)
+        logger.info(f"Response data type: {type(response_data)}")
+
+        # Extract message from GraphResult
+        # The response is a JSON-encoded string containing the string representation of a GraphResult object
+        message_text = None
+
+        if isinstance(response_data, str):
+            # Parse the string representation to extract text from node results
+            import re
+
+            # Try to get catalog node first (Path 1), then warehouse (Path 2), then order
+            for node_name in ["catalog", "warehouse", "order"]:
+                # Pattern to match: 'node_name': NodeResult(result=AgentResult(...message={'role': 'assistant', 'content': [{'text': 'CONTENT'}]}
+                # Use non-greedy .*? to match until we find the message field
+                pattern = rf"'{node_name}':\s*NodeResult\(result=AgentResult\(.*?message=\{{'role':\s*'assistant',\s*'content':\s*\[\{{'text':\s*'(.*?)'\}}\]"
+
+                match = re.search(pattern, response_data)
+                if match:
+                    # Extract the text and unescape it
+                    extracted_text = match.group(1)
+                    # Unescape the text: replace \n with actual newlines, \' with ', etc.
+                    message_text = extracted_text.replace('\\n', '\n').replace("\\'", "'").replace('\\"', '"')
+                    logger.info(f"Extracted message from {node_name} node using regex")
+                    break
+
+        if not message_text:
+            # Fallback to string representation
+            message_text = str(response_data)
+            logger.warning("Could not extract message from GraphResult, using string representation")
+
+        logger.info(f"Final message length: {len(message_text)} chars")
+        logger.info(f"Message preview: {message_text[:200]}...")
         logger.info("Agent processing completed")
+
+        # Store catalog options for Path 1 (catalog node returns options)
+        if "catalog" in str(response_data).lower() and "option 1" in message_text.lower() and "option 2" in message_text.lower():
+            logger.info("Detected catalog options in response - storing for later retrieval")
+            store_catalog_options(customer_message["from"], message_text)
 
         # Send agent response to user
         send_whatsapp_message(
@@ -309,7 +447,7 @@ def handle_image_message(customer_message, session_id):
                 "to": f"+{customer_message['from']}",
                 "text": {
                     "preview_url": False,
-                    "body": f"{response_data}",
+                    "body": message_text,
                 },
             }
         )

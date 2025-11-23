@@ -302,19 +302,11 @@ def initialize_agents():
 
 
 def create_router_agent() -> Agent:
-    """Create a simple router agent for initial request routing"""
+    """Create router agent that routes requests and returns responses to user"""
     router_model = create_bedrock_model("orchestrator")
 
-    router_prompt = """You are a router that determines the entry point for order processing.
-
-If the input contains S3 bucket/key information, respond with: "ROUTE_TO_IMAGE"
-If the input contains a user confirmation message (like "Option 1", "yes", "confirm"), respond with: "ROUTE_TO_ORDER"
-Otherwise respond with: "ROUTE_TO_ORDER"
-
-Only output the routing decision, nothing else."""
-
     return Agent(
-        system_prompt=router_prompt,
+        system_prompt=(BASE_DIR / "prompts/router.md").read_text(),
         model=router_model,
     )
 
@@ -385,7 +377,8 @@ def build_order_processing_graph():
     def is_order_request(result):
         """Check if this is a user confirmation for order placement"""
         result_str = str(result).lower()
-        return "route_to_order" in result_str
+        # Router outputs order details with "Selected Option" and "Items to Order"
+        return ("selected option" in result_str and "items to order" in result_str) or "total amount" in result_str
 
     builder.add_edge("router", "order", condition=is_order_request)
     builder.add_edge("order", "warehouse")
@@ -428,6 +421,7 @@ def process_grocery_list(payload: dict) -> str:
         s3_bucket = payload.get("s3_bucket")
         s3_key = payload.get("s3_key")
         instruction = payload.get("instruction", "")
+        catalog_options = payload.get("catalog_options", "")
 
         # Build minimal structured prompt - let orchestrator decide routing
         prompt_parts = []
@@ -446,6 +440,10 @@ def process_grocery_list(payload: dict) -> str:
             prompt_parts.append(f"Grocery List:\n{items_text}")
         elif instruction:
             prompt_parts.append(instruction)
+
+        # Include catalog options if available (for Path 2)
+        if catalog_options:
+            prompt_parts.append(f"Catalog Options:\n{catalog_options}")
 
         prompt = "\n\n".join(prompt_parts)
 
