@@ -196,7 +196,7 @@ class OrderAssistantStack(Stack):
             handler="lambda.handler",
             code=_lambda.Code.from_asset("src/lambda/process_order"),
             environment={
-                "PHONE_NUMBER_ID": "phone-number-id-b71b760ca9774fe9bd465120e4c00b4a",  # Your WhatsApp phone number ID
+                "PHONE_NUMBER_ID": "phone-number-id-f82a097f349f44798c5926fb29db1ac1",  # Your WhatsApp phone number ID
                 "MEDIA_BUCKET_NAME": bucket.bucket_name,
                 "AGENT_ARN_PARAM": agent_arn_param.parameter_name,
             },
