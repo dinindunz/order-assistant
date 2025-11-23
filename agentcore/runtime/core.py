@@ -308,8 +308,8 @@ def create_router_agent() -> Agent:
     router_prompt = """You are a router that determines the entry point for order processing.
 
 If the input contains S3 bucket/key information, respond with: "ROUTE_TO_IMAGE"
-If the input contains a user confirmation message (like "Option 1", "yes", "confirm"), respond with: "ROUTE_TO_CATALOG"
-Otherwise respond with: "ROUTE_TO_CATALOG"
+If the input contains a user confirmation message (like "Option 1", "yes", "confirm"), respond with: "ROUTE_TO_ORDER"
+Otherwise respond with: "ROUTE_TO_ORDER"
 
 Only output the routing decision, nothing else."""
 
@@ -326,7 +326,7 @@ def build_order_processing_graph():
         router → image_processor → catalog → response to user with options [END]
 
     Path 2 (User Confirmation):
-        router → catalog → order → warehouse → order confirmation response [END]
+        router → order → warehouse → order confirmation response [END]
     """
     global catalog_agent, order_agent, wm_agent, image_processor_agent
 
@@ -380,17 +380,16 @@ def build_order_processing_graph():
     print(f"✓ Path 1 edges added: router → image_processor → catalog [END]")
     # Catalog node ends the graph (no outgoing edge) - returns to user with options
 
-    # Path 2: Confirmation flow (router → catalog → order → warehouse)
+    # Path 2: Confirmation flow (router → order → warehouse)
     print(f"Adding edges for Path 2 (Confirmation flow)...")
-    def is_catalog_request(result):
-        """Check if this is a catalog search or user confirmation"""
+    def is_order_request(result):
+        """Check if this is a user confirmation for order placement"""
         result_str = str(result).lower()
-        return "route_to_catalog" in result_str
+        return "route_to_order" in result_str
 
-    builder.add_edge("router", "catalog", condition=is_catalog_request)
-    builder.add_edge("catalog", "order")
+    builder.add_edge("router", "order", condition=is_order_request)
     builder.add_edge("order", "warehouse")
-    print(f"✓ Path 2 edges added: router → catalog → order → warehouse [END]")
+    print(f"✓ Path 2 edges added: router → order → warehouse [END]")
     # Warehouse node ends the graph (no outgoing edge) - returns final confirmation
 
     # Set execution limits
