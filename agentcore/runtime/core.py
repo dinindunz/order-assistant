@@ -323,10 +323,10 @@ def build_order_processing_graph():
     """Build a graph with two workflow paths:
 
     Path 1 (New Order - Image):
-        router → image_processor → order → response to user
+        router → image_processor → catalog → response to user with options [END]
 
     Path 2 (User Confirmation):
-        router → catalog → order → warehouse → final confirmation
+        router → catalog → order → warehouse → order confirmation response [END]
     """
     global catalog_agent, order_agent, wm_agent, image_processor_agent
 
@@ -368,7 +368,7 @@ def build_order_processing_graph():
     builder.set_entry_point("router")
     print(f"✓ Entry point set successfully")
 
-    # Path 1: Image flow (router → image_processor → order)
+    # Path 1: Image flow (router → image_processor → catalog)
     print(f"Adding edges for Path 1 (Image flow)...")
     def is_image_request(result):
         """Check if this is an image processing request"""
@@ -376,9 +376,9 @@ def build_order_processing_graph():
         return "route_to_image" in result_str
 
     builder.add_edge("router", "image_processor", condition=is_image_request)
-    builder.add_edge("image_processor", "order")
-    print(f"✓ Path 1 edges added: router → image_processor → order")
-    # Order node ends the graph (no outgoing edge) - returns to user with options
+    builder.add_edge("image_processor", "catalog")
+    print(f"✓ Path 1 edges added: router → image_processor → catalog [END]")
+    # Catalog node ends the graph (no outgoing edge) - returns to user with options
 
     # Path 2: Confirmation flow (router → catalog → order → warehouse)
     print(f"Adding edges for Path 2 (Confirmation flow)...")
@@ -390,7 +390,7 @@ def build_order_processing_graph():
     builder.add_edge("router", "catalog", condition=is_catalog_request)
     builder.add_edge("catalog", "order")
     builder.add_edge("order", "warehouse")
-    print(f"✓ Path 2 edges added: router → catalog → order → warehouse")
+    print(f"✓ Path 2 edges added: router → catalog → order → warehouse [END]")
     # Warehouse node ends the graph (no outgoing edge) - returns final confirmation
 
     # Set execution limits
