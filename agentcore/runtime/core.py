@@ -301,107 +301,106 @@ def initialize_agents():
     )
 
 
-def get_orchestrator_agent() -> Agent:
-    """Get or create the orchestrator agent for the graph entry point"""
-    global orchestrator_agent
+def create_router_agent() -> Agent:
+    """Create a simple router agent for initial request routing"""
+    router_model = create_bedrock_model("orchestrator")
 
-    if orchestrator_agent is None:
-        initialize_agents()
+    router_prompt = """You are a router that determines the entry point for order processing.
 
-        # Create orchestrator-specific model
-        orchestrator_model = create_bedrock_model("orchestrator")
+If the input contains S3 bucket/key information, respond with: "ROUTE_TO_IMAGE"
+If the input contains a user confirmation message (like "Option 1", "yes", "confirm"), respond with: "ROUTE_TO_CATALOG"
+Otherwise respond with: "ROUTE_TO_CATALOG"
 
-        orchestrator_agent = Agent(
-            system_prompt=(BASE_DIR / "prompts/orchestrator.md").read_text(),
-            model=orchestrator_model,
-        )
+Only output the routing decision, nothing else."""
 
-    return orchestrator_agent
+    return Agent(
+        system_prompt=router_prompt,
+        model=router_model,
+    )
 
 
 def build_order_processing_graph():
-    """Build the graph-based multi-agent system for order processing"""
+    """Build a graph with two workflow paths:
+
+    Path 1 (New Order - Image):
+        router → image_processor → order → response to user
+
+    Path 2 (User Confirmation):
+        router → catalog → order → warehouse → final confirmation
+    """
     global catalog_agent, order_agent, wm_agent, image_processor_agent
 
     # Initialize agents first
     if catalog_agent is None:
         initialize_agents()
 
-    # Get orchestrator agent
-    orchestrator = get_orchestrator_agent()
-    print(f"✓ Orchestrator agent created: {orchestrator is not None}")
+    # Create router agent
+    print(f"Creating router agent...")
+    router = create_router_agent()
+    print(f"✓ Router agent created")
 
     # Create graph builder
     builder = GraphBuilder()
 
-    # Add all nodes first (executor first, then node_id)
-    print(f"Adding orchestrator node...")
-    builder.add_node(orchestrator, "orchestrator")
-    print(f"✓ Orchestrator node added")
+    # Add all nodes
+    print(f"Adding router node...")
+    builder.add_node(router, "router")
+    print(f"✓ Router node added")
 
+    print(f"Adding image_processor node...")
     builder.add_node(image_processor_agent, "image_processor")
     print(f"✓ Image processor node added")
+
+    print(f"Adding catalog node...")
     builder.add_node(catalog_agent, "catalog")
     print(f"✓ Catalog node added")
+
+    print(f"Adding order node...")
     builder.add_node(order_agent, "order")
     print(f"✓ Order node added")
+
+    print(f"Adding warehouse node...")
     builder.add_node(wm_agent, "warehouse")
     print(f"✓ Warehouse node added")
 
-    # Set entry point after all nodes are added
-    print(f"Setting entry point to orchestrator...")
-    builder.set_entry_point("orchestrator")
+    # Set entry point
+    print(f"Setting entry point to router...")
+    builder.set_entry_point("router")
     print(f"✓ Entry point set successfully")
 
-    # Define hub-and-spoke routing - all agents return to orchestrator
-
-    # Orchestrator → Image Processor (when S3 image detected)
-    def should_process_image(result):
-        """Route to image processor if S3 image present"""
+    # Path 1: Image flow (router → image_processor → order)
+    print(f"Adding edges for Path 1 (Image flow)...")
+    def is_image_request(result):
+        """Check if this is an image processing request"""
         result_str = str(result).lower()
-        return "route" in result_str and ("image" in result_str or "s3" in result_str)
+        return "route_to_image" in result_str
 
-    builder.add_edge("orchestrator", "image_processor", condition=should_process_image)
+    builder.add_edge("router", "image_processor", condition=is_image_request)
+    builder.add_edge("image_processor", "order")
+    print(f"✓ Path 1 edges added: router → image_processor → order")
+    # Order node ends the graph (no outgoing edge) - returns to user with options
 
-    # Image Processor → Orchestrator (always return)
-    builder.add_edge("image_processor", "orchestrator")
-
-    # Orchestrator → Catalog (when product search needed)
-    def should_search_catalog(result):
-        """Route to catalog if product search needed"""
+    # Path 2: Confirmation flow (router → catalog → order → warehouse)
+    print(f"Adding edges for Path 2 (Confirmation flow)...")
+    def is_catalog_request(result):
+        """Check if this is a catalog search or user confirmation"""
         result_str = str(result).lower()
-        return "route" in result_str and "catalog" in result_str
+        return "route_to_catalog" in result_str
 
-    builder.add_edge("orchestrator", "catalog", condition=should_search_catalog)
-
-    # Catalog → Orchestrator (always return)
-    builder.add_edge("catalog", "orchestrator")
-
-    # Orchestrator → Order (when customer confirms)
-    def should_place_order(result):
-        """Route to order agent when customer confirms"""
-        result_str = str(result).lower()
-        return "route" in result_str and "order" in result_str
-
-    builder.add_edge("orchestrator", "order", condition=should_place_order)
-
-    # Order → Orchestrator (always return)
-    builder.add_edge("order", "orchestrator")
-
-    # Orchestrator → Warehouse (when order placed, need delivery slot)
-    def should_find_delivery_slot(result):
-        """Route to warehouse for delivery slot"""
-        result_str = str(result).lower()
-        return "route" in result_str and ("warehouse" in result_str or "delivery" in result_str)
-
-    builder.add_edge("orchestrator", "warehouse", condition=should_find_delivery_slot)
-
-    # Warehouse → Orchestrator (always return)
-    builder.add_edge("warehouse", "orchestrator")
+    builder.add_edge("router", "catalog", condition=is_catalog_request)
+    builder.add_edge("catalog", "order")
+    builder.add_edge("order", "warehouse")
+    print(f"✓ Path 2 edges added: router → catalog → order → warehouse")
+    # Warehouse node ends the graph (no outgoing edge) - returns final confirmation
 
     # Set execution limits
+    print(f"Setting execution limits...")
     builder.set_execution_timeout(300)  # 5 minutes
+    builder.set_max_node_executions(10)  # Prevent infinite loops
+    print(f"✓ Execution limits set (timeout: 300s, max executions: 10)")
 
+    logger.info("✓ Graph built with two workflow paths")
+    print(f"✓ Graph built successfully with two workflow paths")
     return builder.build()
 
 
