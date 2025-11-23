@@ -7,29 +7,19 @@ agents:
   orchestrator:
     model_id: "apac.anthropic.claude-sonnet-4-20250514-v1:0"
     region: "ap-southeast-2"
-    temperature: 0.1
-    max_tokens: 4000
 
   catalog:
     model_id: "apac.anthropic.claude-sonnet-4-20250514-v1:0"
     region: "ap-southeast-2"
-    temperature: 0.1
-    max_tokens: 4000
 
   order:
     model_id: "apac.anthropic.claude-sonnet-4-20250514-v1:0"
     region: "ap-southeast-2"
-    temperature: 0.1
-    max_tokens: 4000
 
   warehouse:
     model_id: "apac.anthropic.claude-sonnet-4-20250514-v1:0"
     region: "ap-southeast-2"
-    temperature: 0.1
-    max_tokens: 4000
 
   image_processor:
     model_id: "apac.anthropic.claude-sonnet-4-20250514-v1:0"
     region: "ap-southeast-2"
-    temperature: 0.1
-    max_tokens: 4000

@@ -200,26 +200,26 @@ def create_bedrock_model(agent_name: str) -> BedrockModel:
     # Read directly from config
     region = agent_config.get("region")
     model_id = agent_config.get("model_id")
-    temperature = agent_config.get("temperature")
-    max_tokens = agent_config.get("max_tokens")
+    # temperature = agent_config.get("temperature")
+    # max_tokens = agent_config.get("max_tokens")
 
     # Validate required fields
     if not model_id:
         raise ValueError(f"model_id not configured for agent '{agent_name}'")
     if not region:
         raise ValueError(f"region not configured for agent '{agent_name}'")
-    if temperature is None:
-        raise ValueError(f"temperature not configured for agent '{agent_name}'")
-    if max_tokens is None:
-        raise ValueError(f"max_tokens not configured for agent '{agent_name}'")
+    # if temperature is None:
+    #     raise ValueError(f"temperature not configured for agent '{agent_name}'")
+    # if max_tokens is None:
+    #     raise ValueError(f"max_tokens not configured for agent '{agent_name}'")
 
     try:
-        logger.info(f"Creating Bedrock model for {agent_name}: {model_id} (temp={temperature}, max_tokens={max_tokens})")
+        # logger.info(f"Creating Bedrock model for {agent_name}: {model_id} (temp={temperature}, max_tokens={max_tokens})")
         model = BedrockModel(
             model_id=model_id,
             region_name=region,
-            temperature=temperature,
-            max_tokens=max_tokens,
+            # temperature=temperature,
+            # max_tokens=max_tokens,
         )
         logger.info(f"Successfully created Bedrock model for {agent_name}")
         return model
@@ -329,50 +329,78 @@ def build_order_processing_graph():
 
     # Get orchestrator agent
     orchestrator = get_orchestrator_agent()
+    print(f"✓ Orchestrator agent created: {orchestrator is not None}")
 
     # Create graph builder
     builder = GraphBuilder()
 
-    # Add all nodes first
-    builder.add_node("orchestrator", orchestrator)
+    # Add all nodes first (executor first, then node_id)
+    print(f"Adding orchestrator node...")
+    builder.add_node(orchestrator, "orchestrator")
+    print(f"✓ Orchestrator node added")
 
-    builder.add_node("image_processor", image_processor_agent)
-    builder.add_node("catalog", catalog_agent)
-    builder.add_node("order", order_agent)
-    builder.add_node("warehouse", wm_agent)
+    builder.add_node(image_processor_agent, "image_processor")
+    print(f"✓ Image processor node added")
+    builder.add_node(catalog_agent, "catalog")
+    print(f"✓ Catalog node added")
+    builder.add_node(order_agent, "order")
+    print(f"✓ Order node added")
+    builder.add_node(wm_agent, "warehouse")
+    print(f"✓ Warehouse node added")
 
     # Set entry point after all nodes are added
+    print(f"Setting entry point to orchestrator...")
     builder.set_entry_point("orchestrator")
+    print(f"✓ Entry point set successfully")
 
-    # Define edges with conditional routing
-    # Orchestrator routes to image processor if S3 image present
+    # Define hub-and-spoke routing - all agents return to orchestrator
+
+    # Orchestrator → Image Processor (when S3 image detected)
     def should_process_image(result):
-        """Check if we need to process an image"""
+        """Route to image processor if S3 image present"""
         result_str = str(result).lower()
-        return "s3_bucket" in result_str or "image" in result_str
+        return "route" in result_str and ("image" in result_str or "s3" in result_str)
 
     builder.add_edge("orchestrator", "image_processor", condition=should_process_image)
 
-    # Orchestrator routes to catalog for product search (default path)
+    # Image Processor → Orchestrator (always return)
+    builder.add_edge("image_processor", "orchestrator")
+
+    # Orchestrator → Catalog (when product search needed)
     def should_search_catalog(result):
-        """Check if we should search catalog"""
+        """Route to catalog if product search needed"""
         result_str = str(result).lower()
-        return "catalog" in result_str or "search" in result_str or "product" in result_str
+        return "route" in result_str and "catalog" in result_str
 
     builder.add_edge("orchestrator", "catalog", condition=should_search_catalog)
 
-    # Image processor flows to catalog
-    builder.add_edge("image_processor", "catalog")
+    # Catalog → Orchestrator (always return)
+    builder.add_edge("catalog", "orchestrator")
 
-    # Catalog flows to order placement
-    builder.add_edge("catalog", "order")
+    # Orchestrator → Order (when customer confirms)
+    def should_place_order(result):
+        """Route to order agent when customer confirms"""
+        result_str = str(result).lower()
+        return "route" in result_str and "order" in result_str
 
-    # Order flows to warehouse for delivery slot
-    builder.add_edge("order", "warehouse")
+    builder.add_edge("orchestrator", "order", condition=should_place_order)
+
+    # Order → Orchestrator (always return)
+    builder.add_edge("order", "orchestrator")
+
+    # Orchestrator → Warehouse (when order placed, need delivery slot)
+    def should_find_delivery_slot(result):
+        """Route to warehouse for delivery slot"""
+        result_str = str(result).lower()
+        return "route" in result_str and ("warehouse" in result_str or "delivery" in result_str)
+
+    builder.add_edge("orchestrator", "warehouse", condition=should_find_delivery_slot)
+
+    # Warehouse → Orchestrator (always return)
+    builder.add_edge("warehouse", "orchestrator")
 
     # Set execution limits
-    builder.max_node_executions(10)
-    builder.execution_timeout(300)  # 5 minutes
+    builder.set_execution_timeout(300)  # 5 minutes
 
     return builder.build()
 
@@ -403,24 +431,21 @@ def process_grocery_list(payload: dict) -> str:
         s3_key = payload.get("s3_key")
         instruction = payload.get("instruction", "")
 
-        # Build structured prompt
+        # Build minimal structured prompt - let orchestrator decide routing
         prompt_parts = []
 
         if customer_id:
             prompt_parts.append(f"Customer ID: {customer_id}")
 
-        # Handle different action types
+        # Just provide the data - orchestrator will decide what to do
         if action == "TEXT_MESSAGE" and message:
             prompt_parts.append(f"User Message: {message}")
-            prompt_parts.append("Route this to the appropriate agent based on the user's intent.")
         elif s3_bucket and s3_key:
             prompt_parts.append(f"S3 Bucket: {s3_bucket}")
             prompt_parts.append(f"S3 Key: {s3_key}")
-            prompt_parts.append("Route to image processor to extract grocery list, then continue to catalog search.")
         elif grocery_list:
             items_text = "\n".join(grocery_list)
             prompt_parts.append(f"Grocery List:\n{items_text}")
-            prompt_parts.append("Route to catalog to search for these products.")
         elif instruction:
             prompt_parts.append(instruction)
 

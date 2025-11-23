@@ -55,7 +55,7 @@ def handler(event, _context):
 
         # Create session ID once in handler - groups invocations within 30-minute windows
         current_time = time.time()
-        time_window = int(current_time // 1800)  # 1800 seconds = 30 minutes
+        time_window = int(current_time // 300)  # 1800 seconds = 30 minutes
         session_id = f"whatsapp-session-{customer_message['from']}-{time_window}"
         logger.info(f"Session ID: {session_id}")
 
