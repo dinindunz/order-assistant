@@ -9,7 +9,7 @@ agents:
     region: "ap-southeast-2"
 
   catalog:
-    model_id: "apac.anthropic.claude-sonnet-4-20250514-v1:0"
+    model_id: "global.anthropic.claude-haiku-4-5-20251001-v1:0"
     region: "ap-southeast-2"
 
   order:
@@ -17,7 +17,7 @@ agents:
     region: "ap-southeast-2"
 
   warehouse:
-    model_id: "apac.anthropic.claude-sonnet-4-20250514-v1:0"
+    model_id: "apac.amazon.nova-lite-v1:0"
     region: "ap-southeast-2"
 
   image_processor:

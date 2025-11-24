@@ -214,14 +214,15 @@ def create_bedrock_model(agent_name: str) -> BedrockModel:
     #     raise ValueError(f"max_tokens not configured for agent '{agent_name}'")
 
     try:
-        # logger.info(f"Creating Bedrock model for {agent_name}: {model_id} (temp={temperature}, max_tokens={max_tokens})")
+        logger.info(f"Creating Bedrock model for '{agent_name}' agent using model: {model_id}")
         model = BedrockModel(
             model_id=model_id,
             region_name=region,
             # temperature=temperature,
             # max_tokens=max_tokens,
         )
-        logger.info(f"Successfully created Bedrock model for {agent_name}")
+        print(f"✓ '{agent_name}' agent created with model: {model_id}")
+        logger.info(f"✓ '{agent_name}' agent successfully created with model: {model_id}")
         return model
     except Exception as e:
         logger.error(f"Failed to create model for {agent_name}: {e}")
@@ -267,6 +268,9 @@ def initialize_agents():
     from s3_tools import download_image_from_s3
 
     # Create agent-specific models
+    print("\n=== Initializing Agents ===")
+    logger.info("=== Initializing Agents ===")
+
     catalog_model = create_bedrock_model("catalog")
     order_model = create_bedrock_model("order")
     wm_model = create_bedrock_model("warehouse")
@@ -278,6 +282,7 @@ def initialize_agents():
         tools=postgres_tools,
         model=catalog_model,
     )
+    logger.info("✓ Catalog agent initialized")
 
     # Order Agent - handles order placement with custom DynamoDB tools
     order_agent = Agent(
@@ -285,6 +290,7 @@ def initialize_agents():
         tools=order_tools,
         model=order_model,
     )
+    logger.info("✓ Order agent initialized")
 
     # WM Agent - handles warehouse management and delivery scheduling with DynamoDB access
     wm_agent = Agent(
@@ -292,6 +298,7 @@ def initialize_agents():
         tools=wm_tools,
         model=wm_model,
     )
+    logger.info("✓ Warehouse agent initialized")
 
     # Image Processor Agent - extracts grocery lists from images using S3 + image_reader
     image_processor_agent = Agent(
@@ -299,26 +306,34 @@ def initialize_agents():
         tools=[download_image_from_s3, image_reader],
         model=image_processor_model,
     )
+    logger.info("✓ Image processor agent initialized")
+
+    print("=== All Agents Initialized ===\n")
 
 
 def create_router_agent() -> Agent:
     """Create router agent that routes requests and returns responses to user"""
     router_model = create_bedrock_model("orchestrator")
 
-    return Agent(
+    router = Agent(
         system_prompt=(BASE_DIR / "prompts/router.md").read_text(),
         model=router_model,
     )
+    logger.info("✓ Router (orchestrator) agent initialized")
+
+    return router
 
 
 def build_order_processing_graph():
     """Build a graph with two workflow paths:
 
     Path 1 (New Order - Image):
-        router → image_processor → catalog → response to user with options [END]
+        router (routing) → image_processor → catalog → router (return) [END]
+        Router returns catalog options to user
 
     Path 2 (User Confirmation):
-        router → order → warehouse → order confirmation response [END]
+        router (routing) → order → warehouse → router (return) [END]
+        Router returns final order confirmation with delivery details to user
     """
     global catalog_agent, order_agent, wm_agent, image_processor_agent
 
@@ -391,8 +406,8 @@ def build_order_processing_graph():
 
     builder.add_edge("router", "image_processor", condition=is_image_request)
     builder.add_edge("image_processor", "catalog")
-    print(f"✓ Path 1 edges added: router → image_processor → catalog [END]")
-    # Catalog node ends the graph (no outgoing edge) - returns to user with options
+    builder.add_edge("catalog", "router")  # Return to router to relay options to user
+    print(f"✓ Path 1 edges added: router → image_processor → catalog → router [END]")
 
     # Path 2: Confirmation flow (router → order → warehouse)
     print(f"Adding edges for Path 2 (Confirmation flow)...")
@@ -433,8 +448,8 @@ def build_order_processing_graph():
 
     builder.add_edge("router", "order", condition=is_order_request)
     builder.add_edge("order", "warehouse")
-    print(f"✓ Path 2 edges added: router → order → warehouse [END]")
-    # Warehouse node ends the graph (no outgoing edge) - returns final confirmation
+    builder.add_edge("warehouse", "router")  # Return to router to relay final confirmation to user
+    print(f"✓ Path 2 edges added: router → order → warehouse → router [END]")
 
     # Set execution limits
     print(f"Setting execution limits...")

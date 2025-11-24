@@ -82,6 +82,87 @@ def delete_catalog_options(customer_id):
         logger.error(f"Error deleting catalog options: {e}", exc_info=True)
 
 
+def extract_agent_message(response_data):
+    """Extract message text from the router node (always the terminal node in our graph)
+
+    The graph architecture ensures router is always the final node that formats
+    responses for the user:
+    - Path 1 (Image): router → image_processor → catalog → router [END]
+    - Path 2 (Order): router → order → warehouse → router [END]
+
+    Args:
+        response_data: The parsed JSON response from agent
+
+    Returns:
+        str: Extracted message text from router node
+    """
+    import re
+
+    if not isinstance(response_data, str):
+        logger.warning("Response data is not a string, converting to string")
+        response_data = str(response_data)
+
+    logger.info("Extracting message from agent response")
+
+    # Pattern to match node results with their message content
+    # Captures: node_name and message text
+    pattern = r"'(\w+)':\s*NodeResult\(.*?message=\{'role':\s*'assistant',\s*'content':\s*\[\{'text':\s*'((?:[^'\\]|\\.)*)'\}\]"
+
+    # Find all node matches
+    all_matches = []
+    for match in re.finditer(pattern, response_data, re.DOTALL):
+        node_name = match.group(1)
+        message_content = match.group(2)
+        all_matches.append({
+            'node': node_name,
+            'message': message_content
+        })
+
+    if not all_matches:
+        logger.error("No node results found in response")
+        return "Error: Unable to process the response. Please try again."
+
+    # Log all found nodes for debugging
+    node_names = [m['node'] for m in all_matches]
+    logger.info(f"Found {len(all_matches)} node results: {node_names}")
+
+    # Always use router node (terminal node in our graph)
+    router_match = next((m for m in all_matches if m['node'] == 'router'), None)
+
+    if not router_match:
+        logger.warning("Router node not found! Using last node as fallback")
+        router_match = all_matches[-1]
+        logger.warning(f"Fallback node: '{router_match['node']}'")
+    else:
+        logger.info("Using router node (terminal node)")
+
+    extracted_text = router_match['message']
+
+    # Unescape Python string escape sequences
+    # Order matters: handle \\ first to avoid double-unescaping
+    message_text = (
+        extracted_text
+        .replace('\\\\', '\x00')  # Temporarily replace \\ to preserve it
+        .replace('\\n', '\n')
+        .replace('\\t', '\t')
+        .replace('\\r', '\r')
+        .replace("\\'", "'")
+        .replace('\\"', '"')
+        .replace('\x00', '\\')  # Restore single backslash
+    )
+
+    # Remove <thinking> tags and their content
+    message_text = re.sub(r'<thinking>.*?</thinking>', '', message_text, flags=re.DOTALL)
+    message_text = re.sub(r'</?thinking>', '', message_text)
+    # Clean up extra whitespace
+    message_text = re.sub(r'\n\s*\n\s*\n', '\n\n', message_text).strip()
+
+    logger.info(f"Extracted message length: {len(message_text)} chars")
+    logger.info(f"Message preview: {message_text[:200]}...")
+
+    return message_text
+
+
 def handler(event, _context):
     """Main Lambda handler for WhatsApp messages"""
     try:
@@ -106,7 +187,7 @@ def handler(event, _context):
 
         # Create session ID once in handler - groups invocations within 30-minute windows
         current_time = time.time()
-        time_window = int(current_time // 600)  # 1800 seconds = 30 minutes
+        time_window = int(current_time // 300)  # 1800 seconds = 30 minutes
         session_id = f"whatsapp-session-{customer_message['from']}-{time_window}"
         logger.info(f"Session ID: {session_id}")
 
@@ -205,41 +286,10 @@ def reply(customer_message, session_id):
 
             # Read and parse response
             response_body = agent_response["response"].read()
-            logger.info(f"Raw response body type: {type(response_body)}")
-
             response_data = json.loads(response_body)
-            logger.info(f"Response data type: {type(response_data)}")
 
-            # Extract message from GraphResult
-            # The response is a JSON-encoded string containing the string representation of a GraphResult object
-            message_text = None
-
-            if isinstance(response_data, str):
-                # Parse the string representation to extract text from node results
-                import re
-
-                # Try to extract from warehouse node first (Path 2), then catalog, then order
-                for node_name in ["warehouse", "catalog", "order"]:
-                    # Pattern to match: 'node_name': NodeResult(result=AgentResult(...message={'role': 'assistant', 'content': [{'text': 'CONTENT'}]}
-                    # Use non-greedy .*? to match until we find the message field
-                    pattern = rf"'{node_name}':\s*NodeResult\(result=AgentResult\(.*?message=\{{'role':\s*'assistant',\s*'content':\s*\[\{{'text':\s*'(.*?)'\}}\]"
-
-                    match = re.search(pattern, response_data)
-                    if match:
-                        # Extract the text and unescape it
-                        extracted_text = match.group(1)
-                        # Unescape the text: replace \n with actual newlines, \' with ', etc.
-                        message_text = extracted_text.replace('\\n', '\n').replace("\\'", "'").replace('\\"', '"')
-                        logger.info(f"Extracted message from {node_name} node using regex")
-                        break
-
-            if not message_text:
-                # Fallback to string representation
-                message_text = str(response_data)
-                logger.warning("Could not extract message from GraphResult, using string representation")
-
-            logger.info(f"Final message length: {len(message_text)} chars")
-            logger.info(f"Message preview: {message_text[:200]}...")
+            # Extract message from router node (terminal node)
+            message_text = extract_agent_message(response_data)
             logger.info("Agent processing completed")
 
             # Delete catalog options after successful order (Path 2 - warehouse confirmation)
@@ -248,6 +298,8 @@ def reply(customer_message, session_id):
                 delete_catalog_options(customer_message["from"])
 
             # Send agent response to user
+            logger.info(f"About to send agent response to customer {customer_message['from']}")
+            logger.info(f"Response message length: {len(message_text)} characters")
             send_whatsapp_message(
                 {
                     "messaging_product": "whatsapp",
@@ -258,6 +310,7 @@ def reply(customer_message, session_id):
                     },
                 }
             )
+            logger.info("Finished sending agent response")
 
         except Exception as error:
             logger.error(f"Error handling text message: {error}", exc_info=True)
@@ -320,13 +373,14 @@ def send_whatsapp_message(meta_message):
     """Send WhatsApp message using AWS SocialMessaging"""
     meta_api_version = "v20.0"
 
-    logger.debug("Send message request")
+    logger.info("Sending WhatsApp message")
+    logger.info(f"Message type: {meta_message.get('type', 'text')}")
     social_messaging.send_whatsapp_message(
         originationPhoneNumberId=PHONE_NUMBER_ID,
         message=json.dumps(meta_message),
         metaApiVersion=meta_api_version,
     )
-    logger.debug("Send message complete")
+    logger.info("WhatsApp message sent successfully")
 
 
 
@@ -398,41 +452,10 @@ def handle_image_message(customer_message, session_id):
         )
         # Read and parse response
         response_body = agent_response["response"].read()
-        logger.info(f"Raw response body type: {type(response_body)}")
-
         response_data = json.loads(response_body)
-        logger.info(f"Response data type: {type(response_data)}")
 
-        # Extract message from GraphResult
-        # The response is a JSON-encoded string containing the string representation of a GraphResult object
-        message_text = None
-
-        if isinstance(response_data, str):
-            # Parse the string representation to extract text from node results
-            import re
-
-            # Try to get catalog node first (Path 1), then warehouse (Path 2), then order
-            for node_name in ["catalog", "warehouse", "order"]:
-                # Pattern to match: 'node_name': NodeResult(result=AgentResult(...message={'role': 'assistant', 'content': [{'text': 'CONTENT'}]}
-                # Use non-greedy .*? to match until we find the message field
-                pattern = rf"'{node_name}':\s*NodeResult\(result=AgentResult\(.*?message=\{{'role':\s*'assistant',\s*'content':\s*\[\{{'text':\s*'(.*?)'\}}\]"
-
-                match = re.search(pattern, response_data)
-                if match:
-                    # Extract the text and unescape it
-                    extracted_text = match.group(1)
-                    # Unescape the text: replace \n with actual newlines, \' with ', etc.
-                    message_text = extracted_text.replace('\\n', '\n').replace("\\'", "'").replace('\\"', '"')
-                    logger.info(f"Extracted message from {node_name} node using regex")
-                    break
-
-        if not message_text:
-            # Fallback to string representation
-            message_text = str(response_data)
-            logger.warning("Could not extract message from GraphResult, using string representation")
-
-        logger.info(f"Final message length: {len(message_text)} chars")
-        logger.info(f"Message preview: {message_text[:200]}...")
+        # Extract message from router node (terminal node)
+        message_text = extract_agent_message(response_data)
         logger.info("Agent processing completed")
 
         # Store catalog options for Path 1 (catalog node returns options)
@@ -441,6 +464,8 @@ def handle_image_message(customer_message, session_id):
             store_catalog_options(customer_message["from"], message_text)
 
         # Send agent response to user
+        logger.info(f"About to send agent response to customer {customer_message['from']}")
+        logger.info(f"Response message length: {len(message_text)} characters")
         send_whatsapp_message(
             {
                 "messaging_product": "whatsapp",
@@ -451,6 +476,7 @@ def handle_image_message(customer_message, session_id):
                 },
             }
         )
+        logger.info("Finished sending agent response")
 
     except Exception as error:
         logger.error(f"Error handling image message: {error}", exc_info=True)

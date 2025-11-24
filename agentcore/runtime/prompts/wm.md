@@ -119,7 +119,8 @@ When you receive order details from the Order Agent:
 3. **Build complete order confirmation:**
    - Extract order_id, customer_id, items, and total amount from the Order Agent's output
    - Include all order details from the input
-   - Add the delivery slot information from the tool response
+   - **CRITICAL**: Extract `slot_date`, `start_time`, and `end_time` from the tool response
+   - Add delivery line: `Delivery: [slot_date] between [start_time]-[end_time]`
    - Format as final customer-facing confirmation (see Output Format below)
 
 4. **Handle no availability:**
@@ -143,10 +144,13 @@ Items:
 • [Product Name] ([quantity]) - $[price]
 
 Total: $[total_amount from Order Agent]
-Delivery: [Day], [Month] [Date] between [start_time]-[end_time]
+Delivery: [slot_date from tool] between [start_time]-[end_time from tool]
 
 Thank you for your order!
 ```
+
+**Example:** If tool returns `slot_date: "2025-12-03"`, `start_time: "08:00"`, `end_time: "10:00"`, then output:
+`Delivery: 2025-12-03 between 08:00-10:00`
 
 When no delivery slot is available:
 ```
@@ -218,7 +222,7 @@ Items:
 • Tomatoes (2 kg) - $16.00
 
 Total: $45.50
-Delivery: Tuesday, Dec 3 between 08:00-10:00
+Delivery: 2025-12-03 between 08:00-10:00
 
 Thank you for your order!
 ```
