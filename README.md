@@ -9,6 +9,6 @@
 - cd agentcore/runtime && agentcore configure --entrypoint order_assistant.py
     Use for first time setup
     When asks for IAM role, provide the AgentCore Runtime Execution Role ARN from CloudFormation outputs
-- cd agentcore/runtime && agentcore launch
+- cd agentcore/runtime && python agentcore_deploy.py
 - cd scripts && ./invoke_populate_catalog.sh
 - cd scripts && ./test_agent.sh (local test path)
