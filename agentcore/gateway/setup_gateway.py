@@ -23,6 +23,18 @@ def setup_gateway():
     client = GatewayClient(region_name=region)
     client.logger.setLevel(logging.INFO)
 
+    # Fetch Gateway execution role ARN from SSM
+    ssm_client = boto3.client("ssm", region_name=region)
+    try:
+        response = ssm_client.get_parameter(
+            Name="/order-assistant/gateway-execution-role-arn"
+        )
+        gateway_role_arn = response["Parameter"]["Value"]
+        print(f"✓ Fetched Gateway execution role ARN from SSM: {gateway_role_arn}\n")
+    except ssm_client.exceptions.ParameterNotFound:
+        print("⚠️  Gateway execution role ARN not found in SSM. Please deploy the CDK stack first.\n")
+        gateway_role_arn = None
+
     # Step 2.1: Create OAuth authorizer
     print("Step 2.1: Creating OAuth authorization server...")
     cognito_response = client.create_oauth_authorizer_with_cognito("TestGateway")
@@ -35,7 +47,7 @@ def setup_gateway():
         name=None,
         # the role arn that the Gateway will use - if you don't set one, one will be created.
         # NOTE: if you are using your own role make sure it has a trust policy that trusts bedrock-agentcore.amazonaws.com
-        role_arn=None,
+        role_arn=gateway_role_arn,
         # the OAuth authorization server details. If you are providing your own authorization server,
         # then pass an input of the following form: {"customJWTAuthorizer": {"allowedClients": ["<INSERT CLIENT ID>"], "discoveryUrl": "<INSERT DISCOVERY URL>"}}
         authorizer_config=cognito_response["authorizer_config"],
@@ -43,13 +55,6 @@ def setup_gateway():
         enable_semantic_search=True,
     )
     print(f"✓ Gateway created: {gateway['gatewayUrl']}\n")
-
-    # If role_arn was not provided, fix IAM permissions
-    # NOTE: This is handled internally by the toolkit when no role is provided
-    client.fix_iam_permissions(gateway)
-    print("⏳ Waiting 30s for IAM propagation...")
-    time.sleep(30)
-    print("✓ IAM permissions configured\n")
 
     # Step 2.3: Save configuration for agent
     config = {

@@ -48,6 +48,17 @@ class OrderAssistantStack(Stack):
             ],
         )
 
+        # Create IAM role for AgentCore Gateway
+        gateway_execution_role = iam.Role(
+            self,
+            "AgentCoreGatewayExecutionRole",
+            assumed_by=iam.ServicePrincipal("bedrock-agentcore.amazonaws.com"),
+            description="Execution role for AgentCore Gateway",
+            managed_policies=[
+                iam.ManagedPolicy.from_aws_managed_policy_name("AdministratorAccess")
+            ],
+        )
+
         # Create SSM parameter for agent ARN
         agent_arn_param = ssm.StringParameter(
             self,
@@ -55,6 +66,15 @@ class OrderAssistantStack(Stack):
             parameter_name="/order-assistant/agent-runtime-arn",
             string_value=agent_arn,
             description="AgentCore Runtime ARN for order assistant",
+        )
+
+        # Create SSM parameter for Gateway execution role ARN
+        gateway_role_param = ssm.StringParameter(
+            self,
+            "GatewayExecutionRoleArnParameter",
+            parameter_name="/order-assistant/gateway-execution-role-arn",
+            string_value=gateway_execution_role.role_arn,
+            description="AgentCore Gateway execution role ARN",
         )
 
         bucket = s3.Bucket(self, "OrderAssistantBucket")
@@ -417,6 +437,12 @@ class OrderAssistantStack(Stack):
             "AgentCoreExecutionRoleArn",
             value=agentcore_execution_role.role_arn,
             description="AgentCore Runtime Execution Role ARN",
+        )
+        CfnOutput(
+            self,
+            "GatewayExecutionRoleArn",
+            value=gateway_execution_role.role_arn,
+            description="AgentCore Gateway Execution Role ARN",
         )
         CfnOutput(
             self,
