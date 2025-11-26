@@ -20,12 +20,49 @@ def setup_gateway():
     print("🚀 Setting up AgentCore Gateway...")
     print(f"Region: {region}\n")
 
-    # Initialize client
+    # Initialize clients
     client = GatewayClient(region_name=region)
     client.logger.setLevel(logging.INFO)
+    ssm_client = session.client("ssm")
+    secrets_client = session.client("secretsmanager")
+
+    # Check if gateway config file already exists
+    config_filename = f"gateway_config_{region}.json"
+    existing_gateway_id = None
+
+    if pathlib.Path(config_filename).exists():
+        print(f"Found existing config file: {config_filename}")
+        with open(config_filename, "r") as f:
+            existing_config = json.load(f)
+            existing_gateway_id = existing_config.get("gateway_id")
+
+        if existing_gateway_id:
+            # Verify the gateway exists in AWS by checking SSM
+            try:
+                ssm_gateway_id = ssm_client.get_parameter(Name="/order-assistant/gateway-id")["Parameter"]["Value"]
+                if ssm_gateway_id == existing_gateway_id:
+                    print(f"✓ Gateway already exists: {existing_gateway_id}")
+                    print("Gateway is already configured. Use this gateway or delete the config file to create a new one.\n")
+
+                    # Get gateway details from SSM
+                    gateway_url = ssm_client.get_parameter(Name="/order-assistant/gateway-url")["Parameter"]["Value"]
+
+                    print("=" * 60)
+                    print("✅ Gateway already configured!")
+                    print(f"Gateway URL: {gateway_url}")
+                    print(f"Gateway ID: {existing_gateway_id}")
+                    print(f"\nConfiguration file: {config_filename}")
+                    print("=" * 60)
+
+                    return {
+                        "gateway_id": existing_gateway_id,
+                        "gateway_url": gateway_url,
+                        "region": region,
+                    }
+            except ssm_client.exceptions.ParameterNotFound:
+                print(f"⚠️  Gateway ID in config file doesn't match SSM. Creating new gateway...\n")
 
     # Fetch Gateway execution role ARN from SSM
-    ssm_client = session.client("ssm")
     try:
         response = ssm_client.get_parameter(
             Name="/order-assistant/gateway-execution-role-arn"
@@ -33,8 +70,9 @@ def setup_gateway():
         gateway_role_arn = response["Parameter"]["Value"]
         print(f"✓ Fetched Gateway execution role ARN from SSM: {gateway_role_arn}\n")
     except ssm_client.exceptions.ParameterNotFound:
-        print("⚠️  Gateway execution role ARN not found in SSM. Please deploy the CDK stack first.\n")
-        gateway_role_arn = None
+        print("❌ Gateway execution role ARN not found in SSM.")
+        print("Please deploy the CDK stack first using: cdk deploy\n")
+        return None
 
     # Step 2.1: Create OAuth authorizer
     print("Step 2.1: Creating OAuth authorization server...")
@@ -57,18 +95,16 @@ def setup_gateway():
     )
     print(f"✓ Gateway created: {gateway['gatewayUrl']}\n")
 
-    # Step 2.3: Save configuration for agent
+    # Step 2.3: Save minimal configuration for reference (gateway_url and client_info are in SSM/Secrets Manager)
     config = {
-        "gateway_url": gateway["gatewayUrl"],
         "gateway_id": gateway["gatewayId"],
         "region": region,
-        "client_info": cognito_response["client_info"],
     }
 
     config_filename = f"gateway_config_{region}.json"
     with open(config_filename, "w") as f:
         json.dump(config, f, indent=2)
-    print(f"✓ Configuration saved to: {config_filename}\n")
+    print(f"✓ Minimal configuration saved to: {config_filename}\n")
 
     # Step 2.4: Store gateway_id and gateway_url in SSM Parameter Store
     print("Step 2.4: Storing gateway configuration in SSM Parameter Store...")

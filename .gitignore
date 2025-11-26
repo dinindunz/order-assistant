@@ -3,7 +3,6 @@ cdk.out/
 .venv/
 .claude/
 .bedrock_agentcore.yaml
-gateway_config_*.json
 *.pdf
 .DS_Store
 .canvas/
