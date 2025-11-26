@@ -8,3 +8,7 @@ gateway_config.json
 .DS_Store
 .canvas/
 cdk.context.json
+
+# OpenTelemetry configuration with sensitive credentials
+.otel_config.yaml
+*/.otel_config.yaml
