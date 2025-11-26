@@ -29,6 +29,20 @@ if not logger.handlers:
 MODEL_CONFIG = None
 OTEL_CONFIG = None
 TRACER_PROVIDER = None
+AWS_REGION = None
+
+
+def get_aws_region() -> str:
+    """Get AWS region from session (uses AWS profile configuration)"""
+    global AWS_REGION
+
+    if AWS_REGION is not None:
+        return AWS_REGION
+
+    session = boto3.Session()
+    AWS_REGION = session.region_name
+    logger.info(f"Using AWS region from session: {AWS_REGION}")
+    return AWS_REGION
 
 
 def load_model_config() -> Dict[str, Any]:
@@ -182,9 +196,12 @@ def load_mcp_tools(tool_filter=None):
     try:
         # Only initialize MCP client once
         if mcp_client is None or not mcp_client_started:
+            # Get region from AWS session
+            region = get_aws_region()
 
             # Fetch gateway configuration from SSM Parameter Store
-            ssm_client = boto3.client("ssm")
+            session = boto3.Session()
+            ssm_client = session.client("ssm")
 
             gateway_id_response = ssm_client.get_parameter(
                 Name="/order-assistant/gateway-id"
@@ -199,7 +216,7 @@ def load_mcp_tools(tool_filter=None):
             logger.info(f"Retrieved gateway_url from SSM: {gateway_url}")
 
             # Get client_info from Secrets Manager
-            secrets_client = boto3.client("secretsmanager")
+            secrets_client = session.client("secretsmanager")
             secret_name = f"agentcore/gateway/{gateway_id}/client-info"
             response = secrets_client.get_secret_value(SecretId=secret_name)
             client_info = json.loads(response["SecretString"])
@@ -280,28 +297,16 @@ def create_bedrock_model(agent_name: str) -> BedrockModel:
     agent_config = config["agents"][agent_name]
 
     # Read directly from config
-    region = agent_config.get("region")
     model_id = agent_config.get("model_id")
-    # temperature = agent_config.get("temperature")
-    # max_tokens = agent_config.get("max_tokens")
 
-    # Validate required fields
-    if not model_id:
-        raise ValueError(f"model_id not configured for agent '{agent_name}'")
-    if not region:
-        raise ValueError(f"region not configured for agent '{agent_name}'")
-    # if temperature is None:
-    #     raise ValueError(f"temperature not configured for agent '{agent_name}'")
-    # if max_tokens is None:
-    #     raise ValueError(f"max_tokens not configured for agent '{agent_name}'")
+    # Get region from AWS session
+    region = get_aws_region()
 
     try:
         logger.info(f"Creating Bedrock model for '{agent_name}' agent using model: {model_id}")
         model = BedrockModel(
             model_id=model_id,
             region_name=region,
-            # temperature=temperature,
-            # max_tokens=max_tokens,
         )
         print(f"✓ '{agent_name}' agent created with model: {model_id}")
         logger.info(f"✓ '{agent_name}' agent successfully created with model: {model_id}")

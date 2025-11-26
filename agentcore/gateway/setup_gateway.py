@@ -65,8 +65,10 @@ def setup_gateway():
         "client_info": cognito_response["client_info"],
     }
 
-    with open("gateway_config.json", "w") as f:
+    config_filename = f"gateway_config_{region}.json"
+    with open(config_filename, "w") as f:
         json.dump(config, f, indent=2)
+    print(f"✓ Configuration saved to: {config_filename}\n")
 
     # Step 2.4: Store gateway_id and gateway_url in SSM Parameter Store
     print("Step 2.4: Storing gateway configuration in SSM Parameter Store...")
@@ -109,9 +111,9 @@ def setup_gateway():
     print("✅ Gateway setup complete!")
     print(f"Gateway URL: {gateway['gatewayUrl']}")
     print(f"Gateway ID: {gateway['gatewayId']}")
-    print("\nConfiguration saved to:")
-    print("  - gateway/gateway_config.json")
-    print("\nNext step: Run 'python test_gateway.py' to test your Gateway")
+    print(f"\nConfiguration saved to:")
+    print(f"  - gateway/{config_filename}")
+    print(f"\nNext step: Run 'python test_gateway.py' to test your Gateway")
     print("=" * 60)
 
     return config
