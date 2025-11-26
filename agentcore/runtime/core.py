@@ -182,27 +182,28 @@ def load_mcp_tools(tool_filter=None):
     try:
         # Only initialize MCP client once
         if mcp_client is None or not mcp_client_started:
-            # Load gateway configuration
-            gateway_config_path = BASE_DIR / "gateway_config.json"
-            with open(gateway_config_path, "r") as f:
-                config = json.load(f)
 
-            gateway_url = config["gateway_url"]
-            gateway_id = config["gateway_id"]
-            region = config["region"]
+            # Fetch gateway configuration from SSM Parameter Store
+            ssm_client = boto3.client("ssm")
+
+            gateway_id_response = ssm_client.get_parameter(
+                Name="/order-assistant/gateway-id"
+            )
+            gateway_id = gateway_id_response["Parameter"]["Value"]
+            logger.info(f"Retrieved gateway_id from SSM: {gateway_id}")
+
+            gateway_url_response = ssm_client.get_parameter(
+                Name="/order-assistant/gateway-url"
+            )
+            gateway_url = gateway_url_response["Parameter"]["Value"]
+            logger.info(f"Retrieved gateway_url from SSM: {gateway_url}")
 
             # Get client_info from Secrets Manager
-            client_info = config.get("client_info")
-            try:
-                secrets_client = boto3.client("secretsmanager", region_name=region)
-                secret_name = f"agentcore/gateway/{gateway_id}/client-info"
-                response = secrets_client.get_secret_value(SecretId=secret_name)
-                client_info = json.loads(response["SecretString"])
-                logger.info(f"Retrieved client_info from Secrets Manager")
-            except Exception as e:
-                logger.warning(
-                    f"Could not retrieve from Secrets Manager, using config file: {e}"
-                )
+            secrets_client = boto3.client("secretsmanager")
+            secret_name = f"agentcore/gateway/{gateway_id}/client-info"
+            response = secrets_client.get_secret_value(SecretId=secret_name)
+            client_info = json.loads(response["SecretString"])
+            logger.info(f"Retrieved client_info from Secrets Manager: {secret_name}")
 
             # Get access token
             logger.info("Getting access token for MCP gateway...")
@@ -256,12 +257,6 @@ def load_mcp_tools(tool_filter=None):
         else:
             return all_tools
 
-    except FileNotFoundError:
-        logger.warning(
-            "gateway_config.json not found. MCP tools will not be available."
-        )
-        logger.warning("Run 'python setup_gateway.py' to create the Gateway.")
-        return []
     except Exception as e:
         logger.error(f"Failed to load MCP tools: {e}")
         import traceback
@@ -631,7 +626,6 @@ def health_check() -> Dict[str, Any]:
         "wm_ready": wm_agent is not None,
         "image_processor_ready": image_processor_agent is not None,
         "bedrock_model_ready": bedrock_model is not None,
-        "aws_region": os.environ.get("AWS_REGION", "ap-southeast-2"),
     }
 
 

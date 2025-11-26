@@ -13,8 +13,9 @@ import shutil
 
 
 def setup_gateway():
-    # Configuration
-    region = "ap-southeast-2"  # Change to your preferred region
+    # Get region from AWS session (uses AWS profile configuration)
+    session = boto3.Session()
+    region = session.region_name
 
     print("🚀 Setting up AgentCore Gateway...")
     print(f"Region: {region}\n")
@@ -24,7 +25,7 @@ def setup_gateway():
     client.logger.setLevel(logging.INFO)
 
     # Fetch Gateway execution role ARN from SSM
-    ssm_client = boto3.client("ssm", region_name=region)
+    ssm_client = session.client("ssm")
     try:
         response = ssm_client.get_parameter(
             Name="/order-assistant/gateway-execution-role-arn"
@@ -66,16 +67,28 @@ def setup_gateway():
 
     with open("gateway_config.json", "w") as f:
         json.dump(config, f, indent=2)
-    
-    # Copy gateway_config.json to runtime directory for Docker build
-    runtime_dir = pathlib.Path(__file__).parent.parent / "runtime"
-    runtime_config_path = runtime_dir / "gateway_config.json"
-    shutil.copy("gateway_config.json", runtime_config_path)
-    print(f"✓ Configuration copied to: {runtime_config_path}\n")
 
-    # Step 2.4: Store client_info in AWS Secrets Manager
-    print("Step 2.4: Storing credentials in AWS Secrets Manager...")
-    secrets_client = boto3.client("secretsmanager", region_name=region)
+    # Step 2.4: Store gateway_id and gateway_url in SSM Parameter Store
+    print("Step 2.4: Storing gateway configuration in SSM Parameter Store...")
+    ssm_client.put_parameter(
+        Name="/order-assistant/gateway-id",
+        Value=gateway["gatewayId"],
+        Description="AgentCore Gateway ID",
+        Type="String",
+        Overwrite=True,
+    )
+    ssm_client.put_parameter(
+        Name="/order-assistant/gateway-url",
+        Value=gateway["gatewayUrl"],
+        Description="AgentCore Gateway URL",
+        Type="String",
+        Overwrite=True,
+    )
+    print(f"✓ Gateway URL stored in SSM: /order-assistant/gateway-url\n")
+
+    # Step 2.5: Store client_info in AWS Secrets Manager
+    print("Step 2.5: Storing credentials in AWS Secrets Manager...")
+    secrets_client = session.client("secretsmanager")
     secret_name = f"agentcore/gateway/{gateway['gatewayId']}/client-info"
 
     try:
@@ -98,7 +111,6 @@ def setup_gateway():
     print(f"Gateway ID: {gateway['gatewayId']}")
     print("\nConfiguration saved to:")
     print("  - gateway/gateway_config.json")
-    print("  - runtime/gateway_config.json (for Docker build)")
     print("\nNext step: Run 'python test_gateway.py' to test your Gateway")
     print("=" * 60)
 
