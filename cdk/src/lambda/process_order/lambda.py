@@ -16,6 +16,11 @@ except ImportError:
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
+# Get region from AWS session (uses AWS profile configuration)
+session = boto3.Session()
+AWS_REGION = session.region_name
+logger.info(f"Lambda using AWS region from session: {AWS_REGION}")
+
 # Initialize OpenTelemetry tracing if available
 if OTEL_AVAILABLE:
     try:
@@ -41,10 +46,10 @@ if OTEL_AVAILABLE:
     except Exception as e:
         print(f"[Lambda OTel] Failed to initialize tracing: {e}")
 
-social_messaging = boto3.client("socialmessaging", region_name="ap-southeast-2")
-agentcore = boto3.client("bedrock-agentcore", region_name="ap-southeast-2")
-ssm = boto3.client("ssm", region_name="ap-southeast-2")
-s3 = boto3.client("s3", region_name="ap-southeast-2")
+social_messaging = session.client("socialmessaging")
+agentcore = session.client("bedrock-agentcore")
+ssm = session.client("ssm")
+s3 = session.client("s3")
 
 # Environment variables
 PHONE_NUMBER_ID = os.environ.get("PHONE_NUMBER_ID")
@@ -56,7 +61,7 @@ PENDING_ORDERS_TABLE = os.environ.get("PENDING_ORDERS_TABLE")
 AGENT_ARN = None
 
 # DynamoDB client for pending orders
-dynamodb_client = boto3.client("dynamodb", region_name="ap-southeast-2")
+dynamodb_client = session.client("dynamodb")
 
 
 def get_agent_arn():
