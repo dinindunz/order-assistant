@@ -23,20 +23,6 @@ class OrderAssistantStack(Stack):
     def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
-        # Read agent ARN from bedrock_agentcore.yaml
-        agentcore_config_path = (
-            pathlib.Path(__file__).parent.parent
-            / "agentcore"
-            / "runtime"
-            / ".bedrock_agentcore.yaml"
-        )
-        with open(agentcore_config_path, "r") as f:
-            agentcore_config = yaml.safe_load(f)
-
-        agent_arn = agentcore_config["agents"]["order_assistant"]["bedrock_agentcore"][
-            "agent_arn"
-        ]
-
         # Create IAM role for AgentCore Runtime
         agentcore_execution_role = iam.Role(
             self,
@@ -59,13 +45,11 @@ class OrderAssistantStack(Stack):
             ],
         )
 
-        # Create SSM parameter for agent ARN
-        agent_arn_param = ssm.StringParameter(
+        # Reference to the agent ARN parameter for granting permissions
+        agent_arn_param = ssm.StringParameter.from_string_parameter_name(
             self,
-            "AgentRuntimeArn",
-            parameter_name="/order-assistant/agent-runtime-arn",
-            string_value=agent_arn,
-            description="AgentCore Runtime ARN for order assistant",
+            "AgentRuntimeArnParam",
+            string_parameter_name="/order-assistant/agent-runtime-arn"
         )
 
         # Create SSM parameter for Gateway execution role ARN
