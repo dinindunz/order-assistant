@@ -20,7 +20,7 @@ import pathlib
 
 class OrderAssistantStack(Stack):
 
-    def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
+    def __init__(self, scope: Construct, construct_id: str, phone_number_id: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
         # Create IAM role for AgentCore Runtime
@@ -221,7 +221,7 @@ class OrderAssistantStack(Stack):
             print(f"Warning: Could not load .otel_config.yaml for lambda: {e}")
 
         lambda_env = {
-            "PHONE_NUMBER_ID": "phone-number-id-f82a097f349f44798c5926fb29db1ac1",  # Your WhatsApp phone number ID
+            "PHONE_NUMBER_ID": phone_number_id,
             "MEDIA_BUCKET_NAME": bucket.bucket_name,
             "AGENT_ARN_PARAM": agent_arn_param.parameter_name,
             "PENDING_ORDERS_TABLE": pending_orders_table.table_name,

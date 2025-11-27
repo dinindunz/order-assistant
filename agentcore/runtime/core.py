@@ -46,21 +46,26 @@ def get_aws_region() -> str:
 
 
 def load_model_config() -> Dict[str, Any]:
-    """Load model configuration from YAML file"""
+    """Load model configuration from region-specific YAML file"""
     global MODEL_CONFIG
 
     if MODEL_CONFIG is not None:
         return MODEL_CONFIG
 
-    config_path = BASE_DIR / "model_config.yaml"
+    region = get_aws_region()
+
+    # Try region-specific config first
+    region_config_path = BASE_DIR / f"model_config.{region}.yaml"
+
     try:
-        with open(config_path, "r") as f:
-            MODEL_CONFIG = yaml.safe_load(f)
-        logger.info(f"Loaded model configuration from {config_path}")
-        return MODEL_CONFIG
-    except FileNotFoundError:
-        logger.error(f"Model config file not found at {config_path}")
-        raise
+        if region_config_path.exists():
+            with open(region_config_path, "r") as f:
+                MODEL_CONFIG = yaml.safe_load(f)
+            logger.info(f"Loaded region-specific model configuration from {region_config_path}")
+            return MODEL_CONFIG
+        else:
+            logger.error(f"Region-specific model config file not found at {region_config_path}")
+            raise FileNotFoundError(f"Model config for region {region} not found. Expected: {region_config_path}")
     except Exception as e:
         logger.error(f"Error loading model config: {e}")
         raise
