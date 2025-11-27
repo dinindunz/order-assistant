@@ -252,10 +252,7 @@ def load_mcp_tools(tool_filter=None):
         if mcp_tools is None:
             all_tools = get_full_tools_list(mcp_client)
             mcp_tools = all_tools
-            print(f"✓ Loaded {len(all_tools)} MCP tools: {[tool.tool_name for tool in all_tools]}")
-            logger.info(
-                f"✓ Loaded {len(all_tools)} MCP tools: {[tool.tool_name for tool in all_tools]}"
-            )
+            logger.info(f"Loaded {len(all_tools)} MCP tools")
         else:
             all_tools = mcp_tools
 
@@ -266,10 +263,7 @@ def load_mcp_tools(tool_filter=None):
                 for tool in all_tools
                 if any(tool.tool_name.startswith(prefix) for prefix in tool_filter)
             ]
-            print(f"✓ Filtered to {len(filtered_tools)} tools: {[tool.tool_name for tool in filtered_tools]}")
-            logger.info(
-                f"✓ Filtered to {len(filtered_tools)} tools: {[tool.tool_name for tool in filtered_tools]}"
-            )
+            logger.info(f"Filtered to {len(filtered_tools)} tools")
             return filtered_tools
         else:
             return all_tools
@@ -308,8 +302,7 @@ def create_bedrock_model(agent_name: str) -> BedrockModel:
             model_id=model_id,
             region_name=region,
         )
-        print(f"✓ '{agent_name}' agent created with model: {model_id}")
-        logger.info(f"✓ '{agent_name}' agent successfully created with model: {model_id}")
+        logger.info(f"'{agent_name}' agent created with model: {model_id}")
         return model
     except Exception as e:
         logger.error(f"Failed to create model for {agent_name}: {e}")
@@ -358,8 +351,7 @@ def initialize_agents():
     from s3_tools import download_image_from_s3
 
     # Create agent-specific models
-    print("\n=== Initializing Agents ===")
-    logger.info("=== Initializing Agents ===")
+    logger.info("Initializing agents...")
 
     catalog_model = create_bedrock_model("catalog")
     order_model = create_bedrock_model("order")
@@ -397,8 +389,7 @@ def initialize_agents():
         model=image_processor_model,
     )
     logger.info("✓ Image processor agent initialized")
-
-    print("=== All Agents Initialized ===\n")
+    logger.info("All agents initialized successfully")
 
 
 def create_router_agent() -> Agent:
@@ -432,41 +423,24 @@ def build_order_processing_graph():
         initialize_agents()
 
     # Create router agent
-    print(f"Creating router agent...")
     router = create_router_agent()
-    print(f"✓ Router agent created")
+    logger.info("Router agent created")
 
     # Create graph builder
     builder = GraphBuilder()
 
     # Add all nodes
-    print(f"Adding router node...")
     builder.add_node(router, "router")
-    print(f"✓ Router node added")
-
-    print(f"Adding image_processor node...")
     builder.add_node(image_processor_agent, "image_processor")
-    print(f"✓ Image processor node added")
-
-    print(f"Adding catalog node...")
     builder.add_node(catalog_agent, "catalog")
-    print(f"✓ Catalog node added")
-
-    print(f"Adding order node...")
     builder.add_node(order_agent, "order")
-    print(f"✓ Order node added")
-
-    print(f"Adding warehouse node...")
     builder.add_node(wm_agent, "warehouse")
-    print(f"✓ Warehouse node added")
+    logger.info("Graph nodes added")
 
     # Set entry point
-    print(f"Setting entry point to router...")
     builder.set_entry_point("router")
-    print(f"✓ Entry point set successfully")
 
     # Path 1: Image flow (router → image_processor → catalog)
-    print(f"Adding edges for Path 1 (Image flow)...")
     def is_image_request(result):
         """Check if this is an image processing request"""
         # Extract just the router's latest output from GraphState.results
@@ -489,18 +463,16 @@ def build_order_processing_graph():
         result_str = router_output.lower()
         is_image = "route_to_image" in result_str
 
-        print(f"🔍 is_image_request: {is_image}")
-        logger.info(f"is_image_request: {is_image}")
+        if is_image:
+            logger.info("Router routing to image processor (Path 1)")
 
         return is_image
 
     builder.add_edge("router", "image_processor", condition=is_image_request)
     builder.add_edge("image_processor", "catalog")
     builder.add_edge("catalog", "router")  # Return to router to relay options to user
-    print(f"✓ Path 1 edges added: router → image_processor → catalog → router [END]")
 
     # Path 2: Confirmation flow (router → order → warehouse)
-    print(f"Adding edges for Path 2 (Confirmation flow)...")
     def is_order_request(result):
         """Check if this is a user confirmation for order placement"""
         # Extract just the router's latest output from GraphState.results
@@ -531,24 +503,20 @@ def build_order_processing_graph():
 
         is_order = (has_order_keywords or has_total_and_customer) and is_not_image_route
 
-        print(f"🔍 is_order_request: {is_order} (order_kw={has_order_keywords}, total_cust={has_total_and_customer}, not_img={is_not_image_route})")
-        logger.info(f"is_order_request: {is_order}, has_order_keywords: {has_order_keywords}, has_total_and_customer: {has_total_and_customer}, is_not_image_route: {is_not_image_route}")
+        if is_order:
+            logger.info("Router routing to order placement (Path 2)")
 
         return is_order
 
     builder.add_edge("router", "order", condition=is_order_request)
     builder.add_edge("order", "warehouse")
     builder.add_edge("warehouse", "router")  # Return to router to relay final confirmation to user
-    print(f"✓ Path 2 edges added: router → order → warehouse → router [END]")
 
     # Set execution limits
-    print(f"Setting execution limits...")
     builder.set_execution_timeout(300)  # 5 minutes
     builder.set_max_node_executions(10)  # Prevent infinite loops
-    print(f"✓ Execution limits set (timeout: 300s, max executions: 10)")
 
-    logger.info("✓ Graph built with two workflow paths")
-    print(f"✓ Graph built successfully with two workflow paths")
+    logger.info("Graph built with two workflow paths")
     return builder.build()
 
 
@@ -604,16 +572,38 @@ def process_grocery_list(payload: dict) -> str:
         prompt = "\n\n".join(prompt_parts)
 
         logger.info(f"Executing graph with prompt:\n{prompt}")
-        print(f"✓ Graph execution starting")
 
         # Execute the graph
         result = graph(prompt)
 
-        print(f"✓ Graph execution completed")
-        logger.info(f"Graph execution completed")
+        logger.info("Graph execution completed")
 
-        # Return the final result
-        return str(result)
+        # Extract the router node's message from the result
+        try:
+            # result is a GraphResult object with results dict
+            if hasattr(result, 'results') and 'router' in result.results:
+                router_result = result.results['router']
+                # Navigate: NodeResult -> result -> message -> content -> text
+                if hasattr(router_result, 'result'):
+                    agent_result = router_result.result
+                    if hasattr(agent_result, 'message'):
+                        message = agent_result.message
+                        # message is a dict: {'role': 'assistant', 'content': [{'text': '...'}]}
+                        if isinstance(message, dict) and 'content' in message:
+                            content = message['content']
+                            if content and isinstance(content, list) and len(content) > 0:
+                                text = content[0].get('text', '')
+                                if text:
+                                    logger.info(f"Successfully extracted router message ({len(text)} chars)")
+                                    return text
+
+            # Fallback if extraction fails
+            logger.warning("Could not extract router message, returning string representation")
+            return str(result)
+
+        except Exception as e:
+            logger.error(f"Error extracting message from result: {e}")
+            return str(result)
 
     except Exception as e:
         logger.error(f"Error processing grocery list: {e}")

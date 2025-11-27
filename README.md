@@ -8,7 +8,9 @@
 - cd agentcore/gateway/targets/lambda_mcp_targets && python register_dynamodb_tools.py
 - cd agentcore/runtime && agentcore configure --entrypoint order_assistant.py
     Use for first time setup
+- cd agentcore/runtime && agentcore launch
     When asks for IAM role, provide the AgentCore Runtime Execution Role ARN from CloudFormation outputs
+    rename the new .bedrock_agentcore.yaml with .bedrock_agentcore.<region-name>.yaml
 - cd agentcore/runtime && python agentcore_deploy.py
 - cd scripts && ./invoke_populate_catalog.sh
 - cd scripts && ./test_agent.sh (local test path)
