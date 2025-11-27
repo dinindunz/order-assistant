@@ -13,8 +13,8 @@ agents:
       execution_role_auto_create: true
       account: '116354729252'
       region: us-west-2
-      ecr_repository: null
-      ecr_auto_create: true
+      ecr_repository: 116354729252.dkr.ecr.us-west-2.amazonaws.com/bedrock-agentcore-order_assistant
+      ecr_auto_create: false
       s3_path: null
       s3_auto_create: false
       network_configuration:
@@ -28,13 +28,13 @@ agents:
         idle_runtime_session_timeout: null
         max_lifetime: null
     bedrock_agentcore:
-      agent_id: null
-      agent_arn: null
+      agent_id: order_assistant-9VdnE27ps0
+      agent_arn: arn:aws:bedrock-agentcore:us-west-2:116354729252:runtime/order_assistant-9VdnE27ps0
       agent_session_id: null
     codebuild:
-      project_name: null
-      execution_role: null
-      source_bucket: null
+      project_name: bedrock-agentcore-order_assistant-builder
+      execution_role: arn:aws:iam::116354729252:role/AmazonBedrockAgentCoreSDKCodeBuild-us-west-2-b285deea2f
+      source_bucket: bedrock-agentcore-codebuild-sources-116354729252-us-west-2
     memory:
       mode: NO_MEMORY
       memory_id: null
