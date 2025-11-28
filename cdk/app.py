@@ -9,16 +9,25 @@ sts_client = session.client("sts")
 account = sts_client.get_caller_identity()["Account"]
 region = session.region_name
 
-# Set region-specific phone number ID
-phone_number_id_map = {
-    "ap-southeast-2": "phone-number-id-f82a097f349f44798c5926fb29db1ac1",
-    "us-west-2": "phone-number-id-cd90e10a5b8e40de869491764db21904",
+# Account and region-specific phone number IDs
+phone_number_ids = {
+    "116354729252": {  # sandpit-4
+        "ap-southeast-2": "phone-number-id-f82a097f349f44798c5926fb29db1ac1",
+        "us-west-2": "phone-number-id-cd90e10a5b8e40de869491764db21904",
+    },
+    "054671736399": {  # sandpit-3
+        "ap-southeast-2": "phone-number-id-ed322c4a4fd74422a861ee6422ac8576",
+        "us-west-2": "phone-number-id-c50a0927e4ea4b8f94bb893c1d6f26c9",
+    },
 }
 
-if region not in phone_number_id_map:
-    raise ValueError(f"Unsupported region: {region}. Supported regions: {list(phone_number_id_map.keys())}")
+if account not in phone_number_ids:
+    raise ValueError(f"Unsupported account: {account}. Supported accounts: {list(phone_number_ids.keys())}")
 
-phone_number_id = phone_number_id_map[region]
+if region not in phone_number_ids[account]:
+    raise ValueError(f"Unsupported region: {region} for account {account}. Supported regions: {list(phone_number_ids[account].keys())}")
+
+phone_number_id = phone_number_ids[account][region]
 
 app = cdk.App()
 OrderAssistantStack(

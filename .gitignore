@@ -15,4 +15,3 @@ cdk.context.json
 # Environment-specific configs (copied by setup_env.sh)
 agentcore/gateway/gateway_config_*.json
 agentcore/runtime/.bedrock_agentcore.*.yaml
-agentcore/runtime/model_config.*.yaml

@@ -28,8 +28,4 @@ echo "✓ Gateway configs copied"
 cp config/$env/.bedrock_agentcore.*.yaml agentcore/runtime/ 2>/dev/null
 echo "✓ AgentCore runtime configs copied"
 
-# Copy model configs
-cp config/$env/model_config.*.yaml agentcore/runtime/ 2>/dev/null
-echo "✓ Model configs copied"
-
 echo "✅ Environment $env ready for deployment"

@@ -12,6 +12,8 @@
     When asks for IAM role, provide the AgentCore Runtime Execution Role ARN from cdk deploy outputs
     Rename the new .bedrock_agentcore.yaml with .bedrock_agentcore.<region-name>.yaml
 - cd agentcore/runtime && python agentcore_deploy.py
+- cd assets && python populate_customers.py
+- cd assets && python populate_delivery_slots.py
 - cd scripts && ./invoke_populate_catalog.sh
 - cd scripts && ./test_agent.sh (local test path)
 
